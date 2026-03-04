@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VEtmle — Messages</title>
+    <link rel="stylesheet" href="../css/main.css" />
+    <link rel="stylesheet" href="../css/layout.css" />
+    <link rel="stylesheet" href="../css/components.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main-content" style="display: flex; flex-direction: column">
+        <div class="topbar">
+          <button
+            onclick="toggleSidebar()"
+            style="
+              background: none;
+              border: none;
+              color: var(--text);
+              font-size: 22px;
+            "
+          >
+            ☰
+          </button>
+          <span style="font-weight: 700">Messages</span>
+        </div>
+
+        <div style="flex: 1; display: flex; overflow: hidden">
+          <div class="messages-layout" style="flex: 1">
+            <!-- Conversations Panel -->
+            <div class="conversations-panel card" style="border-radius: 0">
+              <div class="conversation-search">
+                <div class="search-bar">
+                  <span class="search-icon">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search messages..."
+                    oninput="filterConversations(this.value)"
+                  />
+                </div>
+              </div>
+              <div id="conversations-list">
+                <div
+                  style="display: flex; justify-content: center; padding: 40px"
+                >
+                  <div class="spinner"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div
+              class="chat-panel card"
+              style="border-radius: 0; border-left: 1px solid var(--border)"
+              id="chat-panel"
+            >
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100%;
+                  flex-direction: column;
+                  color: var(--text3);
+                  gap: 12px;
+                "
+              >
+                <div style="font-size: 48px">💬</div>
+                <p>Select a conversation to start chatting</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div id="toast-container"></div>
+
+    <script type="module">
+      import {
+        supabase,
+        requireAuth,
+        getCurrentProfile,
+        avatarUrl,
+        timeAgo,
+      } from "../js/supabase.js";
+      import { toast, renderSidebar } from "../js/app.js";
+
+      let currentUser = null;
+      let currentProfile = null;
+      let activeConversation = null;
+      let conversations = [];
+      let realtimeChannel = null;
+      let allConversations = [];
+
+      async function init() {
+        currentUser = await requireAuth();
+        if (!currentUser) return;
+        currentProfile = await getCurrentProfile();
+        document.getElementById("sidebar").innerHTML = renderSidebar(
+          currentProfile,
+          "messages",
+        );
+
+        await loadConversations();
+
+        // Auto-open conversation if ?user= param
+        const params = new URLSearchParams(location.search);
+        const userId = params.get("user");
+        if (userId) openConversation(userId);
+      }
+
+      async function loadConversations() {
+        // Get all unique people we've messaged
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("sender_id, receiver_id, content, created_at, read")
+          .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+          .order("created_at", { ascending: false });
+
+        if (!msgs) return;
+
+        // Build unique conversation map
+        const convMap = new Map();
+        msgs.forEach((m) => {
+          const otherId =
+            m.sender_id === currentUser.id ? m.receiver_id : m.sender_id;
+          if (!convMap.has(otherId)) {
+            convMap.set(otherId, { lastMessage: m, unread: 0 });
+          }
+          if (m.receiver_id === currentUser.id && !m.read) {
+            convMap.get(otherId).unread++;
+          }
+        });
+
+        if (!convMap.size) {
+          document.getElementById("conversations-list").innerHTML = `
+      <div class="empty-state" style="padding:32px">
+        <div class="empty-icon">💬</div>
+        <h3>No messages yet</h3>
+        <p>Find friends and start chatting!</p>
+      </div>
+    `;
+          return;
+        }
+
+        // Fetch profiles
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url, status")
+          .in("id", Array.from(convMap.keys()));
+
+        allConversations = (profiles || [])
+          .map((p) => ({
+            profile: p,
+            ...convMap.get(p.id),
+          }))
+          .sort(
+            (a, b) =>
+              new Date(b.lastMessage.created_at) -
+              new Date(a.lastMessage.created_at),
+          );
+
+        renderConversationsList(allConversations);
+      }
+
+      function renderConversationsList(convs) {
+        const list = document.getElementById("conversations-list");
+        if (!convs.length) {
+          list.innerHTML =
+            '<div style="padding:16px;color:var(--text3);text-align:center;font-size:13px">No conversations found</div>';
+          return;
+        }
+        list.innerHTML = convs
+          .map(
+            (c) => `
+    <div class="conversation-item${activeConversation === c.profile.id ? " active" : ""}"
+         onclick="openConversation('${c.profile.id}')" data-user-id="${c.profile.id}">
+      <div style="position:relative">
+        <img class="avatar avatar-md" src="${avatarUrl(c.profile.avatar_url)}" alt="">
+        ${c.profile.status === "online" ? '<div class="online-dot"></div>' : ""}
+      </div>
+      <div class="conversation-info">
+        <div class="conversation-name">${c.profile.full_name}</div>
+        <div class="conversation-preview">${c.lastMessage.content.substring(0, 50)}${c.lastMessage.content.length > 50 ? "..." : ""}</div>
+      </div>
+      <div class="conversation-meta">
+        <div>${timeAgo(c.lastMessage.created_at)}</div>
+        ${c.unread > 0 ? `<div class="badge" style="margin-top:4px">${c.unread}</div>` : ""}
+      </div>
+    </div>
+  `,
+          )
+          .join("");
+      }
+
+      window.filterConversations = function (query) {
+        const filtered = allConversations.filter((c) =>
+          c.profile.full_name.toLowerCase().includes(query.toLowerCase()),
+        );
+        renderConversationsList(filtered);
+      };
+
+      window.openConversation = async function (userId) {
+        activeConversation = userId;
+
+        // Update active state in list
+        document.querySelectorAll(".conversation-item").forEach((el) => {
+          el.classList.toggle("active", el.dataset.userId === userId);
+        });
+
+        // Get partner profile
+        const { data: partner } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .single();
+
+        if (!partner) return;
+
+        // Render chat panel
+        const chatPanel = document.getElementById("chat-panel");
+        chatPanel.innerHTML = `
+    <div class="chat-header">
+      <a href="../pages/profile.html?id=${partner.id}">
+        <img class="avatar avatar-sm" src="${avatarUrl(partner.avatar_url)}" alt="">
+      </a>
+      <div style="flex:1">
+        <div style="font-weight:700">${partner.full_name}</div>
+        <div style="font-size:11px;color:${partner.status === "online" ? "var(--green)" : "var(--text3)"}">${partner.status === "online" ? "● Online" : "Offline"}</div>
+      </div>
+      <a href="../pages/profile.html?id=${partner.id}" class="btn btn-ghost btn-sm">View Profile</a>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="msg-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMessage('${userId}')">
+      <button class="send-btn" onclick="sendMessage('${userId}')">➤</button>
+    </div>
+  `;
+
+        await loadMessages(userId);
+        markMessagesRead(userId);
+        setupMessageRealtime(userId);
+      };
+
+      async function loadMessages(userId) {
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("*")
+          .or(
+            `and(sender_id.eq.${currentUser.id},receiver_id.eq.${userId}),and(sender_id.eq.${userId},receiver_id.eq.${currentUser.id})`,
+          )
+          .order("created_at", { ascending: true });
+
+        const container = document.getElementById("chat-messages");
+        if (!msgs?.length) {
+          container.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px">No messages yet. Say hello! 👋</div>`;
+          return;
+        }
+
+        container.innerHTML = msgs.map((m) => renderMessage(m)).join("");
+        container.scrollTop = container.scrollHeight;
+      }
+
+      function renderMessage(m) {
+        const isSent = m.sender_id === currentUser.id;
+        return `
+    <div style="display:flex;flex-direction:column;align-items:${isSent ? "flex-end" : "flex-start"}">
+      <div class="message-bubble ${isSent ? "sent" : "received"}">
+        ${m.content}
+        <div class="message-time">${timeAgo(m.created_at)}</div>
+      </div>
+    </div>
+  `;
+      }
+
+      window.sendMessage = async function (userId) {
+        const input = document.getElementById("msg-input");
+        const content = input.value.trim();
+        if (!content) return;
+
+        input.value = "";
+
+        const { data: msg, error } = await supabase
+          .from("messages")
+          .insert({
+            sender_id: currentUser.id,
+            receiver_id: userId,
+            content,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          toast("Failed to send", "error");
+          return;
+        }
+
+        const container = document.getElementById("chat-messages");
+        const emptyMsg = container.querySelector('div[style*="No messages"]');
+        if (emptyMsg) emptyMsg.remove();
+
+        container.insertAdjacentHTML("beforeend", renderMessage(msg));
+        container.scrollTop = container.scrollHeight;
+
+        // Send notification
+        await supabase.from("notifications").insert({
+          user_id: userId,
+          actor_id: currentUser.id,
+          type: "message",
+          entity_id: msg.id,
+        });
+      };
+
+      function setupMessageRealtime(userId) {
+        if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+
+        realtimeChannel = supabase
+          .channel(`messages-${userId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "messages",
+              filter: `receiver_id=eq.${currentUser.id}`,
+            },
+            (payload) => {
+              if (payload.new.sender_id !== userId) return;
+              const container = document.getElementById("chat-messages");
+              if (!container) return;
+              container.insertAdjacentHTML(
+                "beforeend",
+                renderMessage(payload.new),
+              );
+              container.scrollTop = container.scrollHeight;
+              markMessagesRead(userId);
+            },
+          )
+          .subscribe();
+      }
+
+      async function markMessagesRead(userId) {
+        await supabase
+          .from("messages")
+          .update({ read: true })
+          .eq("sender_id", userId)
+          .eq("receiver_id", currentUser.id)
+          .eq("read", false);
+
+        // Update badge in conversation list
+        const item = document.querySelector(`[data-user-id="${userId}"]`);
+        if (item) {
+          const badge = item.querySelector(".badge");
+          if (badge) badge.remove();
+        }
+      }
+
+      window.toggleSidebar = function () {
+        document.getElementById("sidebar").classList.toggle("open");
+      };
+
+      init();
+    </script>
+  </body>
+</html>

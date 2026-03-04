@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VEtmle — Group</title>
+    <link rel="stylesheet" href="./css/main.css" />
+    <link rel="stylesheet" href="./css/layout.css" />
+    <link rel="stylesheet" href="./css/components.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main-content">
+        <div class="topbar">
+          <button
+            onclick="history.back()"
+            style="
+              background: none;
+              border: none;
+              color: var(--text);
+              font-size: 18px;
+            "
+          >
+            ←
+          </button>
+          <span id="topbar-name" style="font-weight: 700">Group</span>
+        </div>
+        <div class="page-container single-col">
+          <div id="group-container">
+            <div style="display: flex; justify-content: center; padding: 60px">
+              <div class="spinner"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div id="toast-container"></div>
+
+    <script type="module">
+      import {
+        supabase,
+        requireAuth,
+        getCurrentProfile,
+        avatarUrl,
+        timeAgo,
+      } from "/js/supabase.js";
+      import { toast, renderSidebar, renderPost } from "/js/app.js";
+
+      const params = new URLSearchParams(location.search);
+      const groupId = params.get("id");
+      let currentUser, currentProfile, group, membership;
+
+      async function init() {
+        currentUser = await requireAuth();
+        if (!currentUser) return;
+        currentProfile = await getCurrentProfile();
+        document.getElementById("sidebar").innerHTML = renderSidebar(
+          currentProfile,
+          "groups",
+        );
+
+        const { data: g } = await supabase
+          .from("groups")
+          .select("*")
+          .eq("id", groupId)
+          .single();
+        if (!g) {
+          document.getElementById("group-container").innerHTML =
+            '<div class="empty-state"><h3>Group not found</h3></div>';
+          return;
+        }
+
+        group = g;
+        document.title = `VEtmle — ${g.name}`;
+        document.getElementById("topbar-name").textContent = g.name;
+
+        const { data: m } = await supabase
+          .from("group_members")
+          .select("*")
+          .eq("group_id", groupId)
+          .eq("user_id", currentUser.id)
+          .single();
+        membership = m;
+
+        renderGroup();
+      }
+
+      function renderGroup() {
+        const isMember = !!membership;
+        const isOwner = membership?.role === "owner";
+
+        document.getElementById("group-container").innerHTML = `
+    <div class="profile-header-card" style="margin-bottom:16px">
+      <div class="profile-cover-wrap" style="${group.cover_url ? `background:url('${group.cover_url}') center/cover` : "background:linear-gradient(135deg,#1a2040,#0e1428)"}">
+        <div class="profile-avatar-wrap">
+          <div class="profile-avatar-border" style="border-radius:14px;width:80px;height:80px">
+            ${group.avatar_url ? `<img src="${group.avatar_url}" style="width:100%;height:100%;object-fit:cover">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">🏛️</div>`}
+          </div>
+        </div>
+      </div>
+      <div class="profile-header-info">
+        <div>
+          <div class="profile-name">${group.name}</div>
+          <div style="color:var(--text3);font-size:13px;margin-bottom:6px">${group.is_private ? "🔒 Private" : "🌍 Public"} · 👥 ${group.members_count} members</div>
+          ${group.description ? `<div class="profile-bio">${group.description}</div>` : ""}
+        </div>
+        <div class="profile-actions">
+          ${
+            isOwner
+              ? `<button class="btn btn-ghost" onclick="manageGroup()">⚙️ Manage</button>`
+              : isMember
+                ? `<button class="btn btn-ghost" onclick="leaveGroup()">🚪 Leave</button>`
+                : `<button class="btn btn-primary" onclick="joinGroup()">➕ Join Group</button>`
+          }
+        </div>
+      </div>
+    </div>
+
+    ${
+      isMember
+        ? `
+      <div class="post-compose card" style="margin-bottom:14px">
+        <div class="compose-row">
+          <img class="avatar avatar-md" src="${avatarUrl(currentProfile?.avatar_url)}" alt="">
+          <textarea class="compose-input" id="group-post-text" placeholder="Write something in ${group.name}..." rows="2"></textarea>
+        </div>
+        <div style="margin-top:10px;display:flex;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" onclick="postInGroup()">Post</button>
+        </div>
+      </div>
+    `
+        : ""
+    }
+
+    <div id="group-posts">
+      <div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>
+    </div>
+  `;
+
+        loadGroupPosts();
+      }
+
+      async function loadGroupPosts() {
+        const { data: posts } = await supabase
+          .from("posts")
+          .select(
+            "*, author:profiles!author_id(id, full_name, username, avatar_url)",
+          )
+          .eq("wall_owner_id", groupId)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        const container = document.getElementById("group-posts");
+        if (!posts?.length) {
+          container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><h3>No posts yet</h3></div>`;
+          return;
+        }
+
+        if (posts.length) {
+          const { data: userLikes } = await supabase
+            .from("likes")
+            .select("post_id")
+            .eq("user_id", currentUser.id)
+            .in(
+              "post_id",
+              posts.map((p) => p.id),
+            );
+          const likedSet = new Set((userLikes || []).map((l) => l.post_id));
+          posts.forEach((p) => (p.user_liked = likedSet.has(p.id)));
+        }
+
+        container.innerHTML = posts
+          .map((p) => renderPost(p, currentUser.id))
+          .join("");
+      }
+
+      window.postInGroup = async function () {
+        const content = document.getElementById("group-post-text").value.trim();
+        if (!content) return;
+        const { data: post } = await supabase
+          .from("posts")
+          .insert({
+            author_id: currentUser.id,
+            wall_owner_id: groupId,
+            content,
+          })
+          .select(
+            "*, author:profiles!author_id(id, full_name, username, avatar_url)",
+          )
+          .single();
+        document.getElementById("group-post-text").value = "";
+        post.user_liked = false;
+        const container = document.getElementById("group-posts");
+        const empty = container.querySelector(".empty-state");
+        if (empty) empty.remove();
+        container.insertAdjacentHTML(
+          "afterbegin",
+          renderPost(post, currentUser.id),
+        );
+        toast("Posted!", "success");
+      };
+
+      window.joinGroup = async function () {
+        await supabase.from("group_members").insert({
+          group_id: groupId,
+          user_id: currentUser.id,
+          role: "member",
+        });
+        toast("Joined!", "success");
+        location.reload();
+      };
+
+      window.leaveGroup = async function () {
+        if (!confirm("Leave this group?")) return;
+        await supabase
+          .from("group_members")
+          .delete()
+          .match({ group_id: groupId, user_id: currentUser.id });
+        toast("Left group", "info");
+        window.location.href = "/pages/groups.html";
+      };
+
+      window.handleLike = async function (btn, postId) {
+        const isLiked = btn.classList.contains("liked");
+        const countEl = btn.querySelector(".count");
+        if (isLiked) {
+          btn.classList.remove("liked");
+          btn.innerHTML = `🤍 <span class="count">${Math.max(0, parseInt(countEl.textContent) - 1)}</span>`;
+          await supabase
+            .from("likes")
+            .delete()
+            .match({ user_id: currentUser.id, post_id: postId });
+        } else {
+          btn.classList.add("liked");
+          btn.innerHTML = `❤️ <span class="count">${parseInt(countEl.textContent) + 1}</span>`;
+          await supabase
+            .from("likes")
+            .insert({ user_id: currentUser.id, post_id: postId });
+        }
+      };
+
+      window.toggleComments = async function (btn, postId) {
+        const container = document.getElementById(`comments-${postId}`);
+        if (container.style.display !== "none") {
+          container.style.display = "none";
+          return;
+        }
+        container.style.display = "block";
+        container.innerHTML =
+          '<div class="comments-section"><div style="color:var(--text3);font-size:13px">Loading...</div></div>';
+        const { data: comments } = await supabase
+          .from("comments")
+          .select("*, author:profiles!author_id(id, full_name, avatar_url)")
+          .eq("post_id", postId)
+          .order("created_at");
+        container.innerHTML = `
+    <div class="comments-section">
+      ${(comments || []).map((c) => `<div class="comment"><img class="avatar avatar-sm" src="${avatarUrl(c.author?.avatar_url)}"><div class="comment-body"><div class="comment-author">${c.author?.full_name}</div><div class="comment-text">${c.content}</div><div class="comment-meta">${timeAgo(c.created_at)}</div></div></div>`).join("")}
+      <div class="comment-input-row">
+        <img class="avatar avatar-sm" src="${avatarUrl(currentProfile?.avatar_url)}">
+        <input type="text" id="comment-input-${postId}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter')submitComment('${postId}')">
+        <button class="btn btn-primary btn-sm" onclick="submitComment('${postId}')">Send</button>
+      </div>
+    </div>`;
+      };
+
+      window.submitComment = async function (postId) {
+        const input = document.getElementById(`comment-input-${postId}`);
+        const content = input.value.trim();
+        if (!content) return;
+        const { data: c } = await supabase
+          .from("comments")
+          .insert({ post_id: postId, author_id: currentUser.id, content })
+          .select("*, author:profiles!author_id(id, full_name, avatar_url)")
+          .single();
+        input.value = "";
+        const section = document.querySelector(
+          `#comments-${postId} .comments-section`,
+        );
+        const el = document.createElement("div");
+        el.className = "comment";
+        el.innerHTML = `<img class="avatar avatar-sm" src="${avatarUrl(c.author?.avatar_url)}"><div class="comment-body"><div class="comment-author">${c.author?.full_name}</div><div class="comment-text">${c.content}</div><div class="comment-meta">just now</div></div>`;
+        section.insertBefore(el, section.querySelector(".comment-input-row"));
+      };
+
+      window.togglePostMenu = function (btn, postId) {
+        const menu = document.createElement("div");
+        menu.className = "dropdown-menu";
+        const del = document.createElement("button");
+        del.className = "dropdown-item danger";
+        del.innerHTML = "🗑️ Delete";
+        del.onclick = async () => {
+          if (!confirm("Delete?")) return;
+          await supabase.from("posts").delete().eq("id", postId);
+          document.querySelector(`[data-post-id="${postId}"]`)?.remove();
+          menu.remove();
+          toast("Deleted", "success");
+        };
+        menu.appendChild(del);
+        btn.parentElement.style.position = "relative";
+        btn.parentElement.appendChild(menu);
+        setTimeout(
+          () =>
+            document.addEventListener("click", function c(e) {
+              if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener("click", c);
+              }
+            }),
+          10,
+        );
+      };
+
+      window.sharePost = function (id) {
+        navigator.clipboard.writeText(
+          location.origin + "/pages/post.html?id=" + id,
+        );
+        toast("Copied!", "success");
+      };
+      window.openImageViewer = function (url) {
+        const o = document.createElement("div");
+        o.style.cssText =
+          "position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out";
+        o.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px">`;
+        o.onclick = () => o.remove();
+        document.body.appendChild(o);
+      };
+      window.toggleSidebar = function () {
+        document.getElementById("sidebar").classList.toggle("open");
+      };
+
+      init();
+    </script>
+  </body>
+</html>

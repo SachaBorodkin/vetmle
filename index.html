@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VEtmle — Sign In</title>
+    <link rel="stylesheet" href="./css/main.css" />
+    <link rel="stylesheet" href="./css/auth.css" />
+  </head>
+  <body>
+    <div class="auth-page">
+      <div class="auth-card">
+        <div class="auth-logo">
+          <div class="logo-icon-big">V</div>
+          <h1>VEtmle</h1>
+          <p>Connect. Share. Discover.</p>
+        </div>
+
+        <!-- Config warning (shown when keys are not set) -->
+        <div
+          id="config-warning"
+          style="
+            display: none;
+            background: rgba(245, 93, 110, 0.12);
+            border: 1px solid rgba(245, 93, 110, 0.4);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #f55d6e;
+          "
+        >
+          ⚠️ <strong>Setup required:</strong> Open <code>index.html</code> and
+          <code>js/supabase.js</code> and replace
+          <code>YOUR_SUPABASE_URL</code> and
+          <code>YOUR_SUPABASE_ANON_KEY</code> with your real values from
+          <a
+            href="https://supabase.com"
+            target="_blank"
+            style="color: #f55d6e; text-decoration: underline"
+            >supabase.com → Settings → API</a
+          >.
+        </div>
+
+        <div class="auth-tabs">
+          <button
+            class="auth-tab active"
+            id="tab-btn-login"
+            onclick="switchTab('login')"
+          >
+            Sign In
+          </button>
+          <button
+            class="auth-tab"
+            id="tab-btn-register"
+            onclick="switchTab('register')"
+          >
+            Sign Up
+          </button>
+        </div>
+
+        <!-- LOGIN -->
+        <div class="auth-form active" id="form-login">
+          <div class="auth-error" id="login-error"></div>
+          <div class="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              id="login-email"
+              placeholder="your@email.com"
+              autocomplete="email"
+            />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              id="login-password"
+              placeholder="••••••••"
+              autocomplete="current-password"
+            />
+          </div>
+          <button
+            class="btn btn-primary btn-block btn-lg"
+            id="login-btn"
+            onclick="handleLogin()"
+          >
+            Sign In
+          </button>
+          <div style="text-align: center; margin-top: 14px">
+            <a
+              href="#"
+              onclick="
+                switchTab('forgot');
+                return false;
+              "
+              style="font-size: 13px; color: var(--text3)"
+              >Forgot password?</a
+            >
+          </div>
+        </div>
+
+        <!-- REGISTER -->
+        <div class="auth-form" id="form-register">
+          <div class="auth-error" id="register-error"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+            <div class="form-group">
+              <label>First Name</label>
+              <input type="text" id="reg-firstname" placeholder="Jane" />
+            </div>
+            <div class="form-group">
+              <label>Last Name</label>
+              <input type="text" id="reg-lastname" placeholder="Doe" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="reg-username" placeholder="jane_doe" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="reg-email" placeholder="your@email.com" />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              id="reg-password"
+              placeholder="Min. 8 characters"
+            />
+          </div>
+          <button
+            class="btn btn-primary btn-block btn-lg"
+            id="register-btn"
+            onclick="handleRegister()"
+          >
+            Create Account
+          </button>
+          <p
+            style="
+              text-align: center;
+              font-size: 11px;
+              color: var(--text3);
+              margin-top: 12px;
+            "
+          >
+            By signing up you agree to VEtmle's Terms of Service
+          </p>
+        </div>
+
+        <!-- FORGOT -->
+        <div class="auth-form" id="form-forgot">
+          <p style="color: var(--text2); margin-bottom: 16px; font-size: 13px">
+            Enter your email and we'll send you a reset link.
+          </p>
+          <div class="auth-error" id="forgot-error"></div>
+          <div class="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              id="forgot-email"
+              placeholder="your@email.com"
+            />
+          </div>
+          <button
+            class="btn btn-primary btn-block"
+            id="forgot-btn"
+            onclick="handleForgot()"
+          >
+            Send Reset Link
+          </button>
+          <div style="text-align: center; margin-top: 12px">
+            <a
+              href="#"
+              onclick="
+                switchTab('login');
+                return false;
+              "
+              style="font-size: 13px; color: var(--text3)"
+              >← Back to Sign In</a
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <!-- 1. Load Supabase UMD bundle (attaches window.supabase) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+    <!-- 2. App logic — plain <script>, NO type="module", so all functions are global -->
+    <script>
+      // ╔══════════════════════════════════════════════════════╗
+      // ║  STEP 1 — Paste your Supabase credentials here      ║
+      // ║  supabase.com → your project → Settings → API       ║
+      // ╚══════════════════════════════════════════════════════╝
+      var SUPABASE_URL = "https://xtksymdbefznpjapeihr.supabase.co"; // e.g. https://abcdef.supabase.co
+      var SUPABASE_ANON_KEY =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0a3N5bWRiZWZ6bnBqYXBlaWhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2Mjc1NTQsImV4cCI6MjA4ODIwMzU1NH0._3w_UFUBZPKfW5F3-SYZMQkfXGZ22FFv_cdbyDkSots"; // long string starting with eyJ…
+
+      // ── lazy client (created only when URL is valid) ────────
+      var _sb = null;
+
+      function getClient() {
+        if (_sb) return _sb;
+        if (
+          !SUPABASE_URL ||
+          SUPABASE_URL === "YOUR_SUPABASE_URL" ||
+          !SUPABASE_ANON_KEY ||
+          SUPABASE_ANON_KEY === "YOUR_SUPABASE_ANON_KEY"
+        ) {
+          return null;
+        }
+        try {
+          _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+          return _sb;
+        } catch (e) {
+          console.error("Supabase init error:", e);
+          return null;
+        }
+      }
+
+      function isConfigured() {
+        return (
+          SUPABASE_URL !== "YOUR_SUPABASE_URL" &&
+          SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY" &&
+          SUPABASE_URL.startsWith("https://")
+        );
+      }
+
+      // ── On load ─────────────────────────────────────────────
+      window.addEventListener("DOMContentLoaded", function () {
+        if (!isConfigured()) {
+          document.getElementById("config-warning").style.display = "block";
+          return; // don't try to contact Supabase
+        }
+        // Check if already logged in
+        var sb = getClient();
+        if (!sb) return;
+        sb.auth
+          .getSession()
+          .then(function (res) {
+            if (res.data && res.data.session) {
+              window.location.href = "./pages/feed.html";
+            }
+          })
+          .catch(function () {});
+      });
+
+      // ── Tab switching ────────────────────────────────────────
+      function switchTab(tab) {
+        document.querySelectorAll(".auth-form").forEach(function (f) {
+          f.classList.remove("active");
+        });
+        document.querySelectorAll(".auth-tab").forEach(function (t) {
+          t.classList.remove("active");
+        });
+        var form = document.getElementById("form-" + tab);
+        if (form) form.classList.add("active");
+        var btn = document.getElementById("tab-btn-" + tab);
+        if (btn) btn.classList.add("active");
+      }
+
+      // ── Helpers ──────────────────────────────────────────────
+      function showError(id, msg) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.add("show");
+      }
+
+      function hideErrors() {
+        document.querySelectorAll(".auth-error").forEach(function (e) {
+          e.classList.remove("show");
+        });
+      }
+
+      function setLoading(id, on, text) {
+        var b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = on;
+        b.textContent = on ? "..." : text;
+      }
+
+      function showToast(msg, type) {
+        var c = document.getElementById("toast-container");
+        var el = document.createElement("div");
+        el.className = "toast " + (type || "info");
+        el.textContent = msg;
+        c.appendChild(el);
+        setTimeout(function () {
+          el.style.opacity = "0";
+          el.style.transition = ".3s";
+          setTimeout(function () {
+            el.remove();
+          }, 300);
+        }, 3500);
+      }
+
+      function requireConfig() {
+        if (!isConfigured()) {
+          showToast(
+            "Please configure your Supabase credentials first.",
+            "error",
+          );
+          document.getElementById("config-warning").style.display = "block";
+          return false;
+        }
+        return true;
+      }
+
+      // ── Login ────────────────────────────────────────────────
+      async function handleLogin() {
+        if (!requireConfig()) return;
+        hideErrors();
+        var email = document.getElementById("login-email").value.trim();
+        var password = document.getElementById("login-password").value;
+        if (!email || !password) {
+          showError("login-error", "Please fill all fields.");
+          return;
+        }
+
+        setLoading("login-btn", true, "Sign In");
+        try {
+          var res = await getClient().auth.signInWithPassword({
+            email: email,
+            password: password,
+          });
+          if (res.error) {
+            showError("login-error", res.error.message);
+            return;
+          }
+          window.location.href = "./pages/feed.html";
+        } catch (e) {
+          showError(
+            "login-error",
+            "Connection error. Check your Supabase URL.",
+          );
+        } finally {
+          setLoading("login-btn", false, "Sign In");
+        }
+      }
+
+      // ── Register ─────────────────────────────────────────────
+      async function handleRegister() {
+        if (!requireConfig()) return;
+        hideErrors();
+        var first = document.getElementById("reg-firstname").value.trim();
+        var last = document.getElementById("reg-lastname").value.trim();
+        var username = document
+          .getElementById("reg-username")
+          .value.trim()
+          .toLowerCase();
+        var email = document.getElementById("reg-email").value.trim();
+        var password = document.getElementById("reg-password").value;
+
+        if (!first || !last || !username || !email || !password) {
+          showError("register-error", "Please fill all fields.");
+          return;
+        }
+        if (password.length < 8) {
+          showError(
+            "register-error",
+            "Password must be at least 8 characters.",
+          );
+          return;
+        }
+        if (!/^[a-z0-9_]+$/.test(username)) {
+          showError(
+            "register-error",
+            "Username: letters, numbers and underscores only.",
+          );
+          return;
+        }
+
+        setLoading("register-btn", true, "Create Account");
+        try {
+          // Check username availability
+          var check = await getClient()
+            .from("profiles")
+            .select("id")
+            .eq("username", username)
+            .maybeSingle();
+          if (check.data) {
+            showError("register-error", "Username is already taken.");
+            return;
+          }
+
+          var res = await getClient().auth.signUp({
+            email: email,
+            password: password,
+            options: {
+              data: { username: username, full_name: first + " " + last },
+            },
+          });
+          if (res.error) {
+            showError("register-error", res.error.message);
+            return;
+          }
+
+          showToast("Account created! Redirecting…", "success");
+          setTimeout(function () {
+            window.location.href = "./pages/feed.html";
+          }, 900);
+        } catch (e) {
+          showError(
+            "register-error",
+            "Connection error. Check your Supabase URL.",
+          );
+        } finally {
+          setLoading("register-btn", false, "Create Account");
+        }
+      }
+
+      // ── Forgot password ──────────────────────────────────────
+      async function handleForgot() {
+        if (!requireConfig()) return;
+        hideErrors();
+        var email = document.getElementById("forgot-email").value.trim();
+        if (!email) {
+          showError("forgot-error", "Enter your email.");
+          return;
+        }
+
+        setLoading("forgot-btn", true, "Sending…");
+        try {
+          var res = await getClient().auth.resetPasswordForEmail(email);
+          if (res.error) {
+            showError("forgot-error", res.error.message);
+            return;
+          }
+          document.getElementById("form-forgot").innerHTML =
+            '<div style="text-align:center;padding:20px 0">' +
+            '<div style="font-size:48px;margin-bottom:12px">📧</div>' +
+            '<h3 style="margin-bottom:8px">Check your email</h3>' +
+            '<p style="color:var(--text3);font-size:13px">Reset link sent to <strong style="color:var(--text)">' +
+            email +
+            "</strong></p>" +
+            '<a href="#" onclick="switchTab(\'login\');return false;" style="font-size:13px;margin-top:16px;display:inline-block">← Back to Sign In</a>' +
+            "</div>";
+        } catch (e) {
+          showError("forgot-error", "Connection error.");
+        } finally {
+          setLoading("forgot-btn", false, "Send Reset Link");
+        }
+      }
+
+      // ── Enter key ────────────────────────────────────────────
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter") return;
+        if (document.getElementById("form-login").classList.contains("active"))
+          handleLogin();
+        else if (
+          document.getElementById("form-register").classList.contains("active")
+        )
+          handleRegister();
+      });
+    </script>
+  </body>
+</html>

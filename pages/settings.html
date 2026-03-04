@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VEtmle — Settings</title>
+    <link rel="stylesheet" href="../css/main.css" />
+    <link rel="stylesheet" href="../css/layout.css" />
+    <link rel="stylesheet" href="../css/components.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main-content">
+        <div class="topbar">
+          <button
+            onclick="history.back()"
+            style="
+              background: none;
+              border: none;
+              color: var(--text);
+              font-size: 18px;
+            "
+          >
+            ←
+          </button>
+          <span style="font-weight: 700">Settings</span>
+        </div>
+
+        <div class="page-container wide" style="max-width: 700px">
+          <div class="page-title">⚙️ Settings</div>
+
+          <!-- Account Settings -->
+          <div class="card" style="padding: 24px; margin-bottom: 16px">
+            <div class="panel-title" style="margin-bottom: 16px">Account</div>
+
+            <div class="form-group">
+              <label>Full Name</label>
+              <input
+                type="text"
+                id="setting-name"
+                placeholder="Your full name"
+              />
+            </div>
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="setting-username" placeholder="username" />
+            </div>
+            <div class="form-group">
+              <label>Bio</label>
+              <textarea
+                id="setting-bio"
+                placeholder="Tell people about yourself"
+              ></textarea>
+            </div>
+            <div
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
+            >
+              <div class="form-group">
+                <label>City</label>
+                <input type="text" id="setting-city" placeholder="Your city" />
+              </div>
+              <div class="form-group">
+                <label>Birthday</label>
+                <input type="date" id="setting-birthday" />
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="saveProfile()">
+              Save Changes
+            </button>
+          </div>
+
+          <!-- Password -->
+          <div class="card" style="padding: 24px; margin-bottom: 16px">
+            <div class="panel-title" style="margin-bottom: 16px">
+              Change Password
+            </div>
+            <div class="form-group">
+              <label>New Password</label>
+              <input
+                type="password"
+                id="new-password"
+                placeholder="Min. 8 characters"
+              />
+            </div>
+            <div class="form-group">
+              <label>Confirm New Password</label>
+              <input
+                type="password"
+                id="confirm-password"
+                placeholder="Repeat password"
+              />
+            </div>
+            <button class="btn btn-primary" onclick="changePassword()">
+              Update Password
+            </button>
+          </div>
+
+          <!-- Privacy -->
+          <div class="card" style="padding: 24px; margin-bottom: 16px">
+            <div class="panel-title" style="margin-bottom: 16px">Privacy</div>
+            <div style="display: flex; flex-direction: column; gap: 14px">
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                "
+              >
+                <div>
+                  <div style="font-weight: 600">Profile Visibility</div>
+                  <div style="font-size: 12px; color: var(--text3)">
+                    Who can see your profile
+                  </div>
+                </div>
+                <select id="privacy-profile" style="width: 140px">
+                  <option value="everyone">Everyone</option>
+                  <option value="friends">Friends Only</option>
+                </select>
+              </div>
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                "
+              >
+                <div>
+                  <div style="font-weight: 600">Message Requests</div>
+                  <div style="font-size: 12px; color: var(--text3)">
+                    Who can message you
+                  </div>
+                </div>
+                <select id="privacy-messages" style="width: 140px">
+                  <option value="everyone">Everyone</option>
+                  <option value="friends">Friends Only</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Danger Zone -->
+          <div
+            class="card"
+            style="padding: 24px; border-color: rgba(245, 93, 110, 0.3)"
+          >
+            <div
+              class="panel-title"
+              style="margin-bottom: 16px; color: var(--red)"
+            >
+              Danger Zone
+            </div>
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 12px;
+              "
+            >
+              <div>
+                <div style="font-weight: 600">Sign Out</div>
+                <div style="font-size: 12px; color: var(--text3)">
+                  Sign out of your account
+                </div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="signOut()">
+                Sign Out
+              </button>
+            </div>
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+              "
+            >
+              <div>
+                <div style="font-weight: 600; color: var(--red)">
+                  Delete Account
+                </div>
+                <div style="font-size: 12px; color: var(--text3)">
+                  Permanently delete your account and all data
+                </div>
+              </div>
+              <button class="btn btn-danger btn-sm" onclick="confirmDelete()">
+                Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div id="toast-container"></div>
+
+    <script type="module">
+      import {
+        supabase,
+        requireAuth,
+        getCurrentProfile,
+      } from "../js/supabase.js";
+      import { toast, renderSidebar } from "../js/app.js";
+
+      let currentUser = null;
+
+      async function init() {
+        currentUser = await requireAuth();
+        if (!currentUser) return;
+        const profile = await getCurrentProfile();
+        document.getElementById("sidebar").innerHTML = renderSidebar(
+          profile,
+          "",
+        );
+
+        // Populate form
+        if (profile) {
+          document.getElementById("setting-name").value =
+            profile.full_name || "";
+          document.getElementById("setting-username").value =
+            profile.username || "";
+          document.getElementById("setting-bio").value = profile.bio || "";
+          document.getElementById("setting-city").value = profile.city || "";
+          document.getElementById("setting-birthday").value =
+            profile.birthday || "";
+        }
+      }
+
+      window.saveProfile = async function () {
+        const updates = {
+          full_name: document.getElementById("setting-name").value.trim(),
+          username: document
+            .getElementById("setting-username")
+            .value.trim()
+            .toLowerCase(),
+          bio: document.getElementById("setting-bio").value.trim(),
+          city: document.getElementById("setting-city").value.trim(),
+          birthday: document.getElementById("setting-birthday").value || null,
+        };
+        if (!updates.full_name || !updates.username) {
+          toast("Name and username are required", "error");
+          return;
+        }
+        const { error } = await supabase
+          .from("profiles")
+          .update(updates)
+          .eq("id", currentUser.id);
+        if (error) {
+          toast("Failed: " + error.message, "error");
+          return;
+        }
+        toast("Settings saved!", "success");
+      };
+
+      window.changePassword = async function () {
+        const pw = document.getElementById("new-password").value;
+        const confirm = document.getElementById("confirm-password").value;
+        if (!pw) {
+          toast("Enter a new password", "error");
+          return;
+        }
+        if (pw.length < 8) {
+          toast("Password must be at least 8 characters", "error");
+          return;
+        }
+        if (pw !== confirm) {
+          toast("Passwords do not match", "error");
+          return;
+        }
+        const { error } = await supabase.auth.updateUser({ password: pw });
+        if (error) {
+          toast("Failed: " + error.message, "error");
+          return;
+        }
+        toast("Password updated!", "success");
+        document.getElementById("new-password").value = "";
+        document.getElementById("confirm-password").value = "";
+      };
+
+      window.signOut = async function () {
+        await supabase.auth.signOut();
+        window.location.href = "../index.html";
+      };
+
+      window.confirmDelete = function () {
+        if (prompt("Type DELETE to confirm account deletion") === "DELETE") {
+          toast("Account deletion is not yet implemented for safety.", "info");
+        }
+      };
+
+      window.toggleSidebar = function () {
+        document.getElementById("sidebar").classList.toggle("open");
+      };
+
+      init();
+    </script>
+  </body>
+</html>
