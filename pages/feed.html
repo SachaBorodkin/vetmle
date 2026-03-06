@@ -1,612 +1,326 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VEtmle — Profile</title>
-    <link rel="stylesheet" href="../css/main.css" />
-    <link rel="stylesheet" href="../css/layout.css" />
-    <link rel="stylesheet" href="../css/components.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar"></aside>
-      <main class="main-content">
-        <div class="topbar">
-          <button
-            onclick="toggleSidebar()"
-            style="
-              background: none;
-              border: none;
-              color: var(--text);
-              font-size: 22px;
-            "
-          >
-            ☰
-          </button>
-          <span id="topbar-name" style="font-weight: 700"></span>
-        </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEtmle — News Feed</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar"></aside>
 
-        <div class="page-container wide" style="max-width: 860px">
-          <div id="profile-container">
-            <div style="display: flex; justify-content: center; padding: 60px">
-              <div class="spinner"></div>
+  <!-- Main -->
+  <main class="main-content">
+    <!-- Mobile topbar -->
+    <div class="topbar">
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:22px">☰</button>
+      <span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;background:linear-gradient(135deg,var(--accent),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VEtmle</span>
+    </div>
+
+    <div class="page-container single-col">
+      <div class="feed-col">
+
+        <!-- Story Bar -->
+        <div class="card" style="padding:14px;margin-bottom:14px;overflow-x:auto">
+          <div style="display:flex;gap:10px;min-width:max-content" id="stories-bar">
+            <div class="story-add-btn" onclick="addStory()" style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-width:64px">
+              <div style="width:60px;height:60px;border-radius:50%;background:var(--surface2);border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.2s">➕</div>
+              <span style="font-size:11px;color:var(--text3)">Add Story</span>
             </div>
           </div>
         </div>
-      </main>
-    </div>
-    <div id="toast-container"></div>
 
-    <script type="module">
-      import {
-        supabase,
-        requireAuth,
-        getCurrentProfile,
-        avatarUrl,
-        coverUrl,
-        timeAgo,
-      } from "../js/supabase.js";
-      import {
-        toast,
-        renderSidebar,
-        renderPost,
-        createModal,
-        formatCount,
-      } from "../js/app.js";
+        <!-- Compose Post -->
+        <div class="post-compose card" id="compose-box">
+          <div class="compose-row">
+            <img id="compose-avatar" src="../assets/default-avatar.svg" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center;flex-shrink:0;display:block;background:var(--surface3)">
+            <textarea class="compose-input" id="compose-text" placeholder="What's on your mind?" rows="2"
+              onfocus="expandCompose()" style="height:48px;overflow:hidden"></textarea>
+          </div>
+          <!-- image preview -->
+          <div id="image-preview" style="display:none;margin:8px 0 0 56px;position:relative;width:fit-content">
+            <img id="image-preview-img" style="max-height:240px;max-width:100%;border-radius:10px;object-fit:cover;display:block" src="" alt="">
+            <button onclick="clearImage()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">✕</button>
+          </div>
+          <div class="compose-footer" id="compose-footer" style="display:none">
+            <div class="compose-tools">
+              <button class="compose-tool-btn" onclick="document.getElementById('post-image-input').click()" title="Add photo" style="display:flex;align-items:center;gap:4px;padding:0 10px;width:auto;font-size:13px;font-weight:600;color:var(--text2)">
+                🖼️ <span>Photo</span>
+              </button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="char-count" style="font-size:11px;color:var(--text3)">0 / 2000</span>
+              <button class="btn btn-primary btn-sm" id="post-submit-btn" onclick="submitPost()">Post</button>
+            </div>
+          </div>
+          <input type="file" id="post-image-input" accept="image/*" style="display:none" onchange="previewImage(this)">
+        </div>
 
-      const params = new URLSearchParams(location.search);
-      const profileId = params.get("id");
+        <!-- Filter Tabs -->
+        <div style="display:flex;gap:4px;margin-bottom:12px">
+          <button class="btn btn-primary btn-sm" id="filter-all" onclick="setFilter('all')">All Posts</button>
+          <button class="btn btn-ghost btn-sm" id="filter-friends" onclick="setFilter('friends')">Friends</button>
+        </div>
 
-      let currentUser = null;
-      let currentProfile = null;
-      let viewedProfile = null;
-      let friendshipStatus = null;
-      let activeTab = "wall";
-
-      async function init() {
-        currentUser = await requireAuth();
-        if (!currentUser) return;
-        currentProfile = await getCurrentProfile();
-
-        document.getElementById("sidebar").innerHTML = renderSidebar(
-          currentProfile,
-          "profile",
-        );
-
-        const id = profileId || currentUser.id;
-        await loadProfile(id);
-      }
-
-      async function loadProfile(id) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", id)
-          .single();
-
-        if (!profile) {
-          document.getElementById("profile-container").innerHTML = `
-      <div class="empty-state"><div class="empty-icon">😕</div><h3>Profile not found</h3></div>
-    `;
-          return;
-        }
-
-        viewedProfile = profile;
-        document.title = `VEtmle — ${profile.full_name}`;
-        document.getElementById("topbar-name").textContent = profile.full_name;
-
-        // Get counts
-        const [friendsRes, postsRes] = await Promise.all([
-          supabase
-            .from("friendships")
-            .select("id", { count: "exact" })
-            .or(`requester_id.eq.${id},addressee_id.eq.${id}`)
-            .eq("status", "accepted"),
-          supabase
-            .from("posts")
-            .select("id", { count: "exact" })
-            .eq("author_id", id),
-        ]);
-
-        const friendsCount = friendsRes.count || 0;
-        const postsCount = postsRes.count || 0;
-
-        // Check friendship
-        if (id !== currentUser.id) {
-          const { data: fs } = await supabase
-            .from("friendships")
-            .select("*")
-            .or(
-              `and(requester_id.eq.${currentUser.id},addressee_id.eq.${id}),and(requester_id.eq.${id},addressee_id.eq.${currentUser.id})`,
-            )
-            .single();
-          friendshipStatus = fs;
-        }
-
-        const isOwnProfile = id === currentUser.id;
-        const isFriend = friendshipStatus?.status === "accepted";
-        const isPending = friendshipStatus?.status === "pending";
-        const isRequester = friendshipStatus?.requester_id === currentUser.id;
-
-        let actionButtons = "";
-        if (isOwnProfile) {
-          actionButtons = `
-      <button class="btn btn-ghost" onclick="openEditProfile()">✏️ Edit Profile</button>
-      <button class="btn btn-ghost" onclick="openAvatarUpload()">🖼️ Change Photo</button>
-    `;
-        } else {
-          if (isFriend) {
-            actionButtons = `
-        <button class="btn btn-primary" onclick="openMessage('${id}')">✉️ Message</button>
-        <button class="btn btn-ghost" onclick="removeFriend('${friendshipStatus.id}')">👤 Friends</button>
-      `;
-          } else if (isPending && isRequester) {
-            actionButtons = `
-        <button class="btn btn-ghost" onclick="cancelRequest('${friendshipStatus.id}')">⏳ Request Sent</button>
-      `;
-          } else if (isPending && !isRequester) {
-            actionButtons = `
-        <button class="btn btn-green" onclick="acceptRequest('${friendshipStatus.id}')">✅ Accept Request</button>
-        <button class="btn btn-ghost" onclick="declineRequest('${friendshipStatus.id}')">❌ Decline</button>
-      `;
-          } else {
-            actionButtons = `
-        <button class="btn btn-primary" onclick="sendFriendRequest('${id}')">➕ Add Friend</button>
-        <button class="btn btn-ghost" onclick="openMessage('${id}')">✉️ Message</button>
-      `;
-          }
-        }
-
-        const coverBg = coverUrl(profile.cover_url)
-          ? `background-image:url('${coverUrl(profile.cover_url)}');background-size:cover;background-position:center`
-          : "background:linear-gradient(135deg,#1a2040,#0e1428)";
-
-        document.getElementById("profile-container").innerHTML = `
-    <div class="profile-header-card">
-      <div class="profile-cover-wrap" style="${coverBg}">
-        ${isOwnProfile ? `<button onclick="openCoverUpload()" class="btn btn-ghost btn-sm" style="position:absolute;bottom:12px;right:12px">🖼️ Edit Cover</button>` : ""}
-        <div class="profile-avatar-wrap">
-          <div class="profile-avatar-border">
-            <img src="${avatarUrl(profile.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover" id="profile-main-avatar">
+        <!-- Feed -->
+        <div id="feed-container">
+          <div style="display:flex;justify-content:center;padding:40px">
+            <div class="spinner"></div>
           </div>
         </div>
-      </div>
 
-      <div class="profile-header-info">
-        <div>
-          <div class="profile-name">${profile.full_name}</div>
-          <div class="profile-username">@${profile.username}</div>
-          ${profile.bio ? `<div class="profile-bio">${profile.bio}</div>` : ""}
-          <div class="profile-stats">
-            <div class="profile-stat" onclick="showTab('friends')">
-              <div class="num">${friendsCount}</div>
-              <div class="label">Friends</div>
-            </div>
-            <div class="profile-stat">
-              <div class="num">${postsCount}</div>
-              <div class="label">Posts</div>
-            </div>
-            ${profile.city ? `<div class="profile-stat"><div class="num" style="font-size:13px">📍</div><div class="label">${profile.city}</div></div>` : ""}
-          </div>
+        <div id="load-more-wrap" style="text-align:center;padding:16px;display:none">
+          <button class="btn btn-ghost" onclick="loadMorePosts()">Load More</button>
         </div>
-        <div class="profile-actions">
-          ${actionButtons}
-        </div>
-      </div>
-
-      <div class="profile-tabs" id="profile-tabs">
-        <a class="profile-tab active" data-tab="wall" onclick="showTab('wall')">Wall</a>
-        <a class="profile-tab" data-tab="friends" onclick="showTab('friends')">Friends</a>
-        <a class="profile-tab" data-tab="photos" onclick="showTab('photos')">Photos</a>
-        <a class="profile-tab" data-tab="info" onclick="showTab('info')">Info</a>
       </div>
     </div>
+  </main>
+</div>
 
-    <div id="tab-content"></div>
-  `;
+<div id="toast-container"></div>
 
-        showTab("wall");
-      }
+<script type="module">
+import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
+import { toast, renderSidebar, renderPost, formatCount } from '../js/app.js';
 
-      window.showTab = async function (tab) {
-        activeTab = tab;
-        document.querySelectorAll(".profile-tab").forEach((t) => {
-          t.classList.toggle("active", t.dataset.tab === tab);
-        });
+let currentUser = null;
+let currentProfile = null;
+let postOffset = 0;
+const PAGE_SIZE = 10;
+let currentFilter = 'all';
+let selectedImageFile = null;
 
-        const content = document.getElementById("tab-content");
-        content.innerHTML =
-          '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
+async function init() {
+  currentUser = await requireAuth();
+  if (!currentUser) return;
+  currentProfile = await getCurrentProfile();
 
-        const id = profileId || currentUser.id;
+  // Render sidebar
+  document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'feed');
 
-        if (tab === "wall") await loadWall(id, content);
-        else if (tab === "friends") await loadFriends(id, content);
-        else if (tab === "photos") await loadPhotos(id, content);
-        else if (tab === "info") loadInfo(content);
-      };
+  // Set compose avatar
+  document.getElementById('compose-avatar').src = avatarUrl(currentProfile?.avatar_url);
 
-      async function loadWall(id, content) {
-        const isOwnProfile = id === currentUser.id;
+  await loadPosts();
+  setupRealtime();
+}
 
-        let wallHTML = "";
+window.setFilter = function(f) {
+  currentFilter = f;
+  document.getElementById('filter-all').className = `btn btn-sm ${f === 'all' ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('filter-friends').className = `btn btn-sm ${f === 'friends' ? 'btn-primary' : 'btn-ghost'}`;
+  postOffset = 0;
+  document.getElementById('feed-container').innerHTML = '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
+  loadPosts();
+};
 
-        // Wall post compose (for own profile or friends)
-        const canPost = isOwnProfile || friendshipStatus?.status === "accepted";
-        if (canPost) {
-          wallHTML += `
-      <div class="post-compose card" style="margin-bottom:14px">
-        <div class="compose-row">
-          <img class="avatar avatar-md" src="${avatarUrl(currentProfile?.avatar_url)}" alt="">
-          <textarea class="compose-input" id="wall-compose" placeholder="Write on ${isOwnProfile ? "your" : viewedProfile.full_name + "'s"} wall..." rows="2"></textarea>
-        </div>
-        <div style="margin-top:10px;display:flex;justify-content:flex-end">
-          <button class="btn btn-primary btn-sm" onclick="submitWallPost('${id}')">Post</button>
-        </div>
+async function loadPosts() {
+  let query = supabase
+    .from('posts')
+    .select(`
+      *,
+      author:profiles!author_id(id, full_name, username, avatar_url),
+      wall_owner:profiles!wall_owner_id(id, full_name, username)
+    `)
+    .order('created_at', { ascending: false })
+    .range(postOffset, postOffset + PAGE_SIZE - 1);
+
+  if (currentFilter === 'friends') {
+    // Get friend IDs
+    const { data: friends } = await supabase
+      .from('friendships')
+      .select('requester_id, addressee_id')
+      .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
+      .eq('status', 'accepted');
+
+    const friendIds = (friends || []).map(f =>
+      f.requester_id === currentUser.id ? f.addressee_id : f.requester_id
+    );
+    friendIds.push(currentUser.id);
+    query = query.in('author_id', friendIds);
+  }
+
+  const { data: posts, error } = await query;
+  if (error) { toast('Failed to load posts', 'error'); return; }
+
+  // Get user likes
+  if (posts?.length) {
+    const { data: userLikes } = await supabase
+      .from('likes')
+      .select('post_id')
+      .eq('user_id', currentUser.id)
+      .in('post_id', posts.map(p => p.id));
+
+    const likedSet = new Set((userLikes || []).map(l => l.post_id));
+    posts.forEach(p => p.user_liked = likedSet.has(p.id));
+  }
+
+  const container = document.getElementById('feed-container');
+  if (postOffset === 0) container.innerHTML = '';
+
+  if (!posts?.length && postOffset === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📰</div>
+        <h3>No posts yet</h3>
+        <p>Follow some people or post something yourself!</p>
       </div>
     `;
-        }
+    return;
+  }
 
-        const { data: posts } = await supabase
-          .from("posts")
-          .select(
-            "*, author:profiles!author_id(id, full_name, username, avatar_url), wall_owner:profiles!wall_owner_id(id, full_name)",
-          )
-          .eq("wall_owner_id", id)
-          .order("created_at", { ascending: false })
-          .limit(20);
+  posts.forEach(post => {
+    container.insertAdjacentHTML('beforeend', renderPost(post, currentUser.id));
+  });
 
-        // Get likes
-        if (posts?.length) {
-          const { data: userLikes } = await supabase
-            .from("likes")
-            .select("post_id")
-            .eq("user_id", currentUser.id)
-            .in(
-              "post_id",
-              posts.map((p) => p.id),
-            );
-          const likedSet = new Set((userLikes || []).map((l) => l.post_id));
-          posts.forEach((p) => (p.user_liked = likedSet.has(p.id)));
-        }
+  const loadMoreWrap = document.getElementById('load-more-wrap');
+  loadMoreWrap.style.display = posts?.length === PAGE_SIZE ? 'block' : 'none';
+  postOffset += posts.length;
+}
 
-        wallHTML += (posts || [])
-          .map((p) => renderPost(p, currentUser.id))
-          .join("");
-        if (!posts?.length) {
-          wallHTML +=
-            '<div class="empty-state"><div class="empty-icon">📝</div><h3>No posts yet</h3></div>';
-        }
+window.loadMorePosts = function() {
+  loadPosts();
+};
 
-        content.innerHTML = wallHTML;
-      }
+// ── Compose ──
+window.expandCompose = function() {
+  const input = document.getElementById('compose-text');
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+  input.style.overflow = 'auto';
+  document.getElementById('compose-footer').style.display = 'flex';
+};
 
-      async function loadFriends(id, content) {
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select(
-            "requester_id, addressee_id, requester:profiles!requester_id(id, full_name, avatar_url), addressee:profiles!addressee_id(id, full_name, avatar_url)",
-          )
-          .or(`requester_id.eq.${id},addressee_id.eq.${id}`)
-          .eq("status", "accepted");
+document.getElementById('compose-text')?.addEventListener('input', function() {
+  window.expandCompose();
+  const len = this.value.length;
+  const el = document.getElementById('char-count');
+  el.textContent = `${len} / 2000`;
+  el.style.color = len > 1800 ? 'var(--red)' : 'var(--text3)';
+});
 
-        const friends = (friendships || [])
-          .map((f) => (f.requester_id === id ? f.addressee : f.requester))
-          .filter(Boolean);
+window.previewImage = function(input) {
+  if (!input.files || !input.files[0]) return;
+  selectedImageFile = input.files[0];
+  const url = URL.createObjectURL(selectedImageFile);
+  const img = document.getElementById('image-preview-img');
+  img.src = url;
+  img.onload = function() {
+    document.getElementById('image-preview').style.display = 'block';
+  };
+  // also expand compose if not already
+  window.expandCompose();
+};
 
-        content.innerHTML = `
-    <div class="card" style="padding:16px">
-      <div class="panel-title">Friends (${friends.length})</div>
-      ${
-        friends.length
-          ? `
-        <div class="friends-grid">
-          ${friends
-            .map(
-              (f) => `
-            <div class="friend-card" onclick="window.location.href='../pages/profile.html?id=${f.id}'">
-              <img class="avatar avatar-lg" src="${avatarUrl(f.avatar_url)}" alt="">
-              <div class="name">${f.full_name}</div>
-            </div>
-          `,
-            )
-            .join("")}
-        </div>
-      `
-          : '<div class="empty-state"><div class="empty-icon">👥</div><h3>No friends yet</h3></div>'
-      }
-    </div>
-  `;
-      }
+window.clearImage = function() {
+  selectedImageFile = null;
+  const inp = document.getElementById('post-image-input');
+  if (inp) inp.value = '';
+  const prev = document.getElementById('image-preview');
+  if (prev) prev.style.display = 'none';
+  const img = document.getElementById('image-preview-img');
+  if (img) img.src = '';
+};
 
-      async function loadPhotos(id, content) {
-        const { data: posts } = await supabase
-          .from("posts")
-          .select("id, image_url")
-          .eq("author_id", id)
-          .not("image_url", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(30);
+window.submitPost = async function() {
+  const content = document.getElementById('compose-text').value.trim();
+  if (!content && !selectedImageFile) { toast('Write something first!', 'info'); return; }
+  if (content.length > 2000) { toast('Post is too long', 'error'); return; }
 
-        content.innerHTML = `
-    <div class="card" style="padding:16px">
-      <div class="panel-title">Photos (${posts?.length || 0})</div>
-      ${
-        posts?.length
-          ? `
-        <div class="photo-grid">
-          ${posts.map((p) => `<img src="${p.image_url}" alt="" onclick="openImageViewer('${p.image_url}')">`).join("")}
-        </div>
-      `
-          : '<div class="empty-state"><div class="empty-icon">🖼️</div><h3>No photos yet</h3></div>'
-      }
-    </div>
-  `;
-      }
+  const btn = document.getElementById('post-submit-btn');
+  btn.disabled = true;
+  btn.textContent = selectedImageFile ? 'Uploading...' : 'Posting...';
 
-      function loadInfo(content) {
-        const p = viewedProfile;
-        content.innerHTML = `
-    <div class="card" style="padding:24px">
-      <div class="panel-title">Personal Info</div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        ${p.full_name ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">👤</span><div><div style="font-size:12px;color:var(--text3)">Name</div><div style="font-weight:600">${p.full_name}</div></div></div>` : ""}
-        ${p.username ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">🔗</span><div><div style="font-size:12px;color:var(--text3)">Username</div><div style="font-weight:600">@${p.username}</div></div></div>` : ""}
-        ${p.city ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">📍</span><div><div style="font-size:12px;color:var(--text3)">City</div><div style="font-weight:600">${p.city}</div></div></div>` : ""}
-        ${p.birthday ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">🎂</span><div><div style="font-size:12px;color:var(--text3)">Birthday</div><div style="font-weight:600">${new Date(p.birthday).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div></div></div>` : ""}
-        ${p.bio ? `<div style="display:flex;gap:10px;align-items:flex-start"><span style="font-size:18px">💬</span><div><div style="font-size:12px;color:var(--text3)">About</div><div>${p.bio}</div></div></div>` : ""}
-        <div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">📅</span><div><div style="font-size:12px;color:var(--text3)">Joined</div><div style="font-weight:600">${new Date(p.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long" })}</div></div></div>
-      </div>
-    </div>
-  `;
-      }
+  let imageUrl = null;
+  if (selectedImageFile) {
+    try {
+      const ext  = selectedImageFile.name.split('.').pop();
+      const path = Date.now() + '-' + Math.random().toString(36).slice(2) + '.' + ext;
+      const { error: upErr } = await supabase.storage
+        .from('posts')
+        .upload(path, selectedImageFile, { cacheControl: '3600', upsert: false });
+      if (upErr) throw upErr;
+      imageUrl = supabase.storage.from('posts').getPublicUrl(path).data.publicUrl;
+    } catch (e) {
+      toast('Image upload failed: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = 'Post';
+      return;
+    }
+  }
 
-      // ── Friend actions ──
-      window.sendFriendRequest = async function (id) {
-        const { error } = await supabase.from("friendships").insert({
-          requester_id: currentUser.id,
-          addressee_id: id,
-          status: "pending",
-        });
-        if (error) {
-          toast("Failed to send request", "error");
-          return;
-        }
-        await supabase.from("notifications").insert({
-          user_id: id,
-          actor_id: currentUser.id,
-          type: "friend_request",
-        });
-        toast("Friend request sent!", "success");
-        loadProfile(id);
-      };
+  const { data: post, error } = await supabase.from('posts').insert({
+    author_id: currentUser.id,
+    wall_owner_id: currentUser.id,
+    content: content || '',
+    image_url: imageUrl,
+  }).select('*, author:profiles!author_id(id, full_name, username, avatar_url)').single();
 
-      window.cancelRequest = async function (id) {
-        await supabase.from("friendships").delete().eq("id", id);
-        toast("Request cancelled", "info");
-        loadProfile(profileId || currentUser.id);
-      };
+  btn.disabled = false; btn.textContent = 'Post';
+  if (error) { toast('Failed to post: ' + error.message, 'error'); return; }
 
-      window.acceptRequest = async function (id) {
-        await supabase
-          .from("friendships")
-          .update({ status: "accepted" })
-          .eq("id", id);
-        await supabase.from("notifications").insert({
-          user_id: friendshipStatus.requester_id,
-          actor_id: currentUser.id,
-          type: "friend_accept",
-        });
-        toast("Friend request accepted!", "success");
-        loadProfile(profileId || currentUser.id);
-      };
+  document.getElementById('compose-text').value = '';
+  document.getElementById('compose-text').style.height = '48px';
+  document.getElementById('compose-footer').style.display = 'none';
+  document.getElementById('char-count').textContent = '0 / 2000';
+  clearImage();
 
-      window.declineRequest = async function (id) {
-        await supabase.from("friendships").delete().eq("id", id);
-        toast("Request declined", "info");
-        loadProfile(profileId || currentUser.id);
-      };
+  post.user_liked = false;
+  const container = document.getElementById('feed-container');
+  const empty = container.querySelector('.empty-state');
+  if (empty) empty.remove();
+  container.insertAdjacentHTML('afterbegin', renderPost(post, currentUser.id));
+  toast('Posted!', 'success');
+};
 
-      window.removeFriend = async function (id) {
-        if (!confirm("Remove this friend?")) return;
-        await supabase.from("friendships").delete().eq("id", id);
-        toast("Removed from friends", "info");
-        loadProfile(profileId || currentUser.id);
-      };
+// ── Post interactions ──
+window.handleLike = async function(btn, postId) {
+  const isLiked = btn.classList.contains('liked');
+  const countEl = btn.querySelector('.count');
 
-      window.openMessage = function (id) {
-        window.location.href = `../pages/messages.html?user=${id}`;
-      };
+  if (isLiked) {
+    btn.classList.remove('liked');
+    btn.innerHTML = `🤍 <span class="count">${Math.max(0, parseInt(countEl.textContent) - 1)}</span>`;
+    await supabase.from('likes').delete().match({ user_id: currentUser.id, post_id: postId });
+  } else {
+    btn.classList.add('liked');
+    btn.innerHTML = `❤️ <span class="count">${parseInt(countEl.textContent) + 1}</span>`;
+    await supabase.from('likes').insert({ user_id: currentUser.id, post_id: postId });
+  }
+};
 
-      window.submitWallPost = async function (wallOwnerId) {
-        const content = document.getElementById("wall-compose").value.trim();
-        if (!content) return;
-        const { data: post, error } = await supabase
-          .from("posts")
-          .insert({
-            author_id: currentUser.id,
-            wall_owner_id: wallOwnerId,
-            content,
-          })
-          .select(
-            "*, author:profiles!author_id(id, full_name, username, avatar_url), wall_owner:profiles!wall_owner_id(id, full_name)",
-          )
-          .single();
-        if (error) {
-          toast("Failed to post", "error");
-          return;
-        }
-        if (wallOwnerId !== currentUser.id) {
-          await supabase.from("notifications").insert({
-            user_id: wallOwnerId,
-            actor_id: currentUser.id,
-            type: "wall_post",
-            entity_id: post.id,
-          });
-        }
-        post.user_liked = false;
-        const wallCompose = document.querySelector(".post-compose.card");
-        wallCompose.insertAdjacentHTML(
-          "afterend",
-          renderPost(post, currentUser.id),
-        );
-        document.getElementById("wall-compose").value = "";
-        toast("Posted!", "success");
-      };
+window.toggleComments = async function(btn, postId) {
+  const container = document.getElementById(`comments-${postId}`);
+  if (container.style.display !== 'none') {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  container.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:13px">Loading...</div>';
 
-      // ── Edit Profile ──
-      window.openEditProfile = function () {
-        const p = viewedProfile;
-        const overlay = createModal(
-          "Edit Profile",
-          `
-    <div class="form-group"><label>Full Name</label><input id="edit-name" value="${p.full_name || ""}"></div>
-    <div class="form-group"><label>Username</label><input id="edit-username" value="${p.username || ""}"></div>
-    <div class="form-group"><label>Bio</label><textarea id="edit-bio">${p.bio || ""}</textarea></div>
-    <div class="form-group"><label>City</label><input id="edit-city" value="${p.city || ""}"></div>
-    <div class="form-group"><label>Birthday</label><input type="date" id="edit-birthday" value="${p.birthday || ""}"></div>
-  `,
-          `
-    <button class="btn btn-ghost" onclick="document.querySelector('.modal-overlay').remove()">Cancel</button>
-    <button class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
-  `,
-        );
-      };
+  const { data: comments } = await supabase
+    .from('comments')
+    .select('*, author:profiles!author_id(id, full_name, avatar_url)')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true });
 
-      window.saveProfile = async function () {
-        const updates = {
-          full_name: document.getElementById("edit-name").value.trim(),
-          username: document
-            .getElementById("edit-username")
-            .value.trim()
-            .toLowerCase(),
-          bio: document.getElementById("edit-bio").value.trim(),
-          city: document.getElementById("edit-city").value.trim(),
-          birthday: document.getElementById("edit-birthday").value || null,
-        };
-        const { error } = await supabase
-          .from("profiles")
-          .update(updates)
-          .eq("id", currentUser.id);
-        if (error) {
-          toast("Failed to save: " + error.message, "error");
-          return;
-        }
-        document.querySelector(".modal-overlay")?.remove();
-        toast("Profile updated!", "success");
-        loadProfile(currentUser.id);
-      };
-
-      window.openAvatarUpload = function () {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "image/*";
-        input.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          toast("Uploading...", "info");
-          try {
-            const { uploadImage } = await import("../js/app.js");
-            const path = await uploadImage(supabase, "avatars", file);
-            await supabase
-              .from("profiles")
-              .update({ avatar_url: path })
-              .eq("id", currentUser.id);
-            toast("Avatar updated!", "success");
-            loadProfile(currentUser.id);
-          } catch (e) {
-            toast("Upload failed", "error");
-          }
-        };
-        input.click();
-      };
-
-      window.openCoverUpload = function () {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "image/*";
-        input.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          toast("Uploading...", "info");
-          try {
-            const { uploadImage } = await import("../js/app.js");
-            const path = await uploadImage(supabase, "covers", file);
-            await supabase
-              .from("profiles")
-              .update({ cover_url: path })
-              .eq("id", currentUser.id);
-            toast("Cover updated!", "success");
-            loadProfile(currentUser.id);
-          } catch (e) {
-            toast("Upload failed", "error");
-          }
-        };
-        input.click();
-      };
-
-      window.openImageViewer = function (url) {
-        const overlay = document.createElement("div");
-        overlay.style.cssText =
-          "position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out";
-        overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px">`;
-        overlay.onclick = () => overlay.remove();
-        document.body.appendChild(overlay);
-      };
-
-      window.handleLike = async function (btn, postId) {
-        const isLiked = btn.classList.contains("liked");
-        const countEl = btn.querySelector(".count");
-        if (isLiked) {
-          btn.classList.remove("liked");
-          btn.innerHTML = `🤍 <span class="count">${Math.max(0, parseInt(countEl.textContent) - 1)}</span>`;
-          await supabase
-            .from("likes")
-            .delete()
-            .match({ user_id: currentUser.id, post_id: postId });
-        } else {
-          btn.classList.add("liked");
-          btn.innerHTML = `❤️ <span class="count">${parseInt(countEl.textContent) + 1}</span>`;
-          await supabase
-            .from("likes")
-            .insert({ user_id: currentUser.id, post_id: postId });
-        }
-      };
-
-      window.toggleComments = async function (btn, postId) {
-        const container = document.getElementById(`comments-${postId}`);
-        if (container.style.display !== "none") {
-          container.style.display = "none";
-          return;
-        }
-        container.style.display = "block";
-        container.innerHTML =
-          '<div class="comments-section"><div style="color:var(--text3);font-size:13px">Loading...</div></div>';
-        const { data: comments } = await supabase
-          .from("comments")
-          .select("*, author:profiles!author_id(id, full_name, avatar_url)")
-          .eq("post_id", postId)
-          .order("created_at", { ascending: true });
-        container.innerHTML = `
+  container.innerHTML = `
     <div class="comments-section">
-      ${
-        (comments || [])
-          .map(
-            (c) => `
+      ${(comments || []).map(c => `
         <div class="comment">
           <img class="avatar avatar-sm" src="${avatarUrl(c.author?.avatar_url)}" alt="">
           <div class="comment-body">
-            <div class="comment-author"><a href="../pages/profile.html?id=${c.author_id}">${c.author?.full_name || "User"}</a></div>
+            <div class="comment-author">
+              <a href="../pages/profile.html?id=${c.author_id}">${c.author?.full_name || 'User'}</a>
+            </div>
             <div class="comment-text">${c.content}</div>
             <div class="comment-meta">${timeAgo(c.created_at)}</div>
           </div>
         </div>
-      `,
-          )
-          .join("") ||
-        '<p style="color:var(--text3);font-size:13px;padding:8px 0">No comments yet</p>'
-      }
+      `).join('') || '<p style="color:var(--text3);font-size:13px;padding:8px 0">No comments yet</p>'}
       <div class="comment-input-row">
         <img class="avatar avatar-sm" src="${avatarUrl(currentProfile?.avatar_url)}" alt="">
         <input type="text" id="comment-input-${postId}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter')submitComment('${postId}')">
@@ -614,90 +328,190 @@
       </div>
     </div>
   `;
-      };
+};
 
-      window.submitComment = async function (postId) {
-        const input = document.getElementById(`comment-input-${postId}`);
-        const content = input.value.trim();
-        if (!content) return;
-        const { data: comment } = await supabase
-          .from("comments")
-          .insert({
-            post_id: postId,
-            author_id: currentUser.id,
-            content,
-          })
-          .select("*, author:profiles!author_id(id, full_name, avatar_url)")
-          .single();
-        input.value = "";
-        const section = document.querySelector(
-          `#comments-${postId} .comments-section`,
-        );
-        const inputRow = section.querySelector(".comment-input-row");
-        const el = document.createElement("div");
-        el.className = "comment";
-        el.innerHTML = `
+window.submitComment = async function(postId) {
+  const input = document.getElementById(`comment-input-${postId}`);
+  const content = input.value.trim();
+  if (!content) return;
+
+  const { data: comment, error } = await supabase.from('comments').insert({
+    post_id: postId,
+    author_id: currentUser.id,
+    content,
+  }).select('*, author:profiles!author_id(id, full_name, avatar_url)').single();
+
+  if (error) { toast('Failed to comment', 'error'); return; }
+  input.value = '';
+
+  const section = document.querySelector(`#comments-${postId} .comments-section`);
+  const inputRow = section.querySelector('.comment-input-row');
+  const commentEl = document.createElement('div');
+  commentEl.className = 'comment';
+  commentEl.innerHTML = `
     <img class="avatar avatar-sm" src="${avatarUrl(comment.author?.avatar_url)}" alt="">
     <div class="comment-body">
-      <div class="comment-author"><a href="../pages/profile.html?id=${comment.author_id}">${comment.author?.full_name}</a></div>
+      <div class="comment-author"><a href="../pages/profile.html?id=${comment.author_id}">${comment.author?.full_name || 'User'}</a></div>
       <div class="comment-text">${comment.content}</div>
       <div class="comment-meta">just now</div>
     </div>
   `;
-        section.insertBefore(el, inputRow);
-      };
+  section.insertBefore(commentEl, inputRow);
+};
 
-      window.togglePostMenu = function (btn, postId) {
-        const menu = document.createElement("div");
-        menu.className = "dropdown-menu";
-        [
-          {
-            icon: "🗑️",
-            label: "Delete post",
-            danger: true,
-            action: async () => {
-              if (!confirm("Delete?")) return;
-              await supabase.from("posts").delete().eq("id", postId);
-              document.querySelector(`[data-post-id="${postId}"]`)?.remove();
-              toast("Deleted", "success");
-            },
-          },
-        ].forEach((item) => {
-          const el = document.createElement("button");
-          el.className = `dropdown-item${item.danger ? " danger" : ""}`;
-          el.innerHTML = `${item.icon} ${item.label}`;
-          el.onclick = () => {
-            item.action();
-            menu.remove();
-          };
-          menu.appendChild(el);
-        });
-        btn.parentElement.style.position = "relative";
-        btn.parentElement.appendChild(menu);
-        setTimeout(
-          () =>
-            document.addEventListener("click", function c(e) {
-              if (!menu.contains(e.target)) {
-                menu.remove();
-                document.removeEventListener("click", c);
-              }
-            }),
-          10,
-        );
-      };
+window.togglePostMenu = function(btn, postId) {
+  const { openDropdown } = window._appUtils || {};
+  const items = [
+    { icon: '✏️', label: 'Edit post', action: () => editPost(postId) },
+    { icon: '🗑️', label: 'Delete post', danger: true, action: () => deletePost(postId) },
+  ];
+  const menu = document.createElement('div');
+  menu.className = 'dropdown-menu';
+  items.forEach(item => {
+    const el = document.createElement('button');
+    el.className = `dropdown-item${item.danger ? ' danger' : ''}`;
+    el.innerHTML = `${item.icon} ${item.label}`;
+    el.onclick = () => { item.action(); menu.remove(); };
+    menu.appendChild(el);
+  });
+  btn.parentElement.style.position = 'relative';
+  btn.parentElement.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', function close(e) {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+  }, { once: false }), 10);
+};
 
-      window.sharePost = function (postId) {
-        navigator.clipboard.writeText(
-          `${origin}../pages/post.html?id=${postId}`,
-        );
-        toast("Link copied!", "success");
-      };
+window.deletePost = async function(postId) {
+  if (!confirm('Delete this post?')) return;
+  await supabase.from('posts').delete().eq('id', postId);
+  document.querySelector(`[data-post-id="${postId}"]`)?.remove();
+  toast('Post deleted', 'success');
+};
 
-      window.toggleSidebar = function () {
-        document.getElementById("sidebar").classList.toggle("open");
-      };
+window.editPost = function(postId) {
+  const card = document.querySelector(`[data-post-id="${postId}"]`);
+  const contentEl = card.querySelector('.post-content');
+  const oldContent = contentEl.textContent;
+  const textarea = document.createElement('textarea');
+  textarea.className = 'compose-input';
+  textarea.value = oldContent;
+  textarea.style.margin = '0 16px 12px';
+  contentEl.replaceWith(textarea);
+  textarea.focus();
 
-      init();
-    </script>
-  </body>
+  const footer = document.createElement('div');
+  footer.style.cssText = 'padding:0 16px 12px;display:flex;gap:8px;justify-content:flex-end';
+  footer.innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="cancelEdit('${postId}')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveEdit('${postId}')">Save</button>
+  `;
+  textarea.insertAdjacentElement('afterend', footer);
+  card._editFooter = footer;
+  card._editTextarea = textarea;
+  card._oldContent = oldContent;
+};
+
+window.cancelEdit = function(postId) {
+  const card = document.querySelector(`[data-post-id="${postId}"]`);
+  const newContent = document.createElement('div');
+  newContent.className = 'post-content';
+  newContent.textContent = card._oldContent;
+  card._editTextarea.replaceWith(newContent);
+  card._editFooter.remove();
+};
+
+window.saveEdit = async function(postId) {
+  const card = document.querySelector(`[data-post-id="${postId}"]`);
+  const content = card._editTextarea.value.trim();
+  if (!content) return;
+  await supabase.from('posts').update({ content }).eq('id', postId);
+  const newContent = document.createElement('div');
+  newContent.className = 'post-content';
+  newContent.textContent = content;
+  card._editTextarea.replaceWith(newContent);
+  card._editFooter.remove();
+  toast('Post updated', 'success');
+};
+
+window.sharePost = function(postId) {
+  navigator.clipboard.writeText(`${window.location.origin}../pages/post.html?id=${postId}`);
+  toast('Link copied!', 'success');
+};
+
+window.openImageViewer = function(url) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px">`;
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
+};
+
+// ── Stories ──
+async function loadStories() {
+  const { data: friends } = await supabase
+    .from('friendships')
+    .select('requester_id, addressee_id')
+    .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
+    .eq('status', 'accepted');
+
+  const friendIds = (friends || []).map(f =>
+    f.requester_id === currentUser.id ? f.addressee_id : f.requester_id
+  );
+
+  if (!friendIds.length) return;
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .in('id', friendIds)
+    .limit(8);
+
+  const bar = document.getElementById('stories-bar');
+  (profiles || []).forEach(p => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-width:64px';
+    div.innerHTML = `
+      <div style="width:60px;height:60px;border-radius:50%;padding:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));cursor:pointer"
+           onclick="window.location.href='../pages/profile.html?id=${p.id}'">
+        <img style="width:100%;height:100%;border-radius:50%;border:2px solid var(--surface);object-fit:cover" 
+             src="${avatarUrl(p.avatar_url)}" alt="">
+      </div>
+      <span style="font-size:11px;color:var(--text2);max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.full_name}</span>
+    `;
+    bar.appendChild(div);
+  });
+}
+
+// ── Realtime ──
+function setupRealtime() {
+  supabase.channel('feed')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
+      if (payload.new.author_id === currentUser.id) return; // We already added it
+      const { data: post } = await supabase
+        .from('posts')
+        .select('*, author:profiles!author_id(id, full_name, username, avatar_url)')
+        .eq('id', payload.new.id)
+        .single();
+      if (post) {
+        post.user_liked = false;
+        const container = document.getElementById('feed-container');
+        const empty = container.querySelector('.empty-state');
+        if (empty) empty.remove();
+        container.insertAdjacentHTML('afterbegin', renderPost(post, currentUser.id));
+      }
+    })
+    .subscribe();
+}
+
+window.toggleSidebar = function() {
+  document.getElementById('sidebar').classList.toggle('open');
+};
+
+window.addStory = function() {
+  toast('Stories coming soon!', 'info');
+};
+
+init().then(loadStories);
+</script>
+</body>
 </html>
