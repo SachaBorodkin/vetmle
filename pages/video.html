@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEtmle — Video</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    .video-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+    .video-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; cursor:pointer; transition:all .18s; }
+    .video-card:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:0 8px 32px rgba(0,0,0,.35); }
+    .video-thumb { position:relative; aspect-ratio:16/9; background:var(--surface2); overflow:hidden; }
+    .video-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+    .video-thumb .play-overlay {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,.4); opacity:0; transition:opacity .18s;
+    }
+    .video-card:hover .play-overlay { opacity:1; }
+    .play-circle { width:52px; height:52px; border-radius:50%; background:rgba(91,127,255,.9); display:flex; align-items:center; justify-content:center; }
+    .video-duration { position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,.8); color:#fff; font-size:11px; font-weight:700; padding:2px 6px; border-radius:4px; }
+    .video-body { padding:12px; }
+    .video-title { font-weight:700; font-size:14px; margin-bottom:4px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .video-meta { font-size:11px; color:var(--text3); display:flex; align-items:center; gap:6px; margin-top:4px; }
+    .video-author-avatar { width:20px; height:20px; border-radius:50%; object-fit:cover; }
+    /* Modal player */
+    .video-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:1000; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .video-modal-inner { width:min(860px,95vw); }
+    .video-modal-inner video { width:100%; border-radius:12px; max-height:70vh; background:#000; }
+    .video-modal-info { padding:16px 0; color:#fff; }
+    .video-modal-title { font-size:18px; font-weight:700; margin-bottom:6px; }
+    .video-modal-close { position:absolute; top:20px; right:24px; background:rgba(255,255,255,.15); border:none; color:#fff; width:38px; height:38px; border-radius:50%; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .video-modal-close:hover { background:rgba(255,255,255,.25); }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:22px">&#9776;</button>
+      <span style="font-weight:700">Video</span>
+    </div>
+
+    <div class="page-container wide" style="max-width:1040px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <h1 style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900;background:linear-gradient(135deg,#f55d6e,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VEtmle Video</h1>
+          <p style="color:var(--text3);font-size:13px">Watch and share videos</p>
+        </div>
+        <button class="btn btn-primary" onclick="openUploadVideo()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Upload Video
+        </button>
+      </div>
+
+      <div style="display:flex;gap:4px;margin-bottom:16px">
+        <button class="btn btn-primary btn-sm" id="tab-all"    onclick="loadTab('all')">All Videos</button>
+        <button class="btn btn-ghost btn-sm"   id="tab-mine"   onclick="loadTab('mine')">My Videos</button>
+        <button class="btn btn-ghost btn-sm"   id="tab-friends" onclick="loadTab('friends')">Friends</button>
+      </div>
+
+      <div class="search-bar card" style="margin-bottom:16px;padding:0 16px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Search videos..." style="background:transparent;border:none;box-shadow:none;padding:12px 8px" oninput="filterVideos(this.value)">
+      </div>
+
+      <div class="video-grid" id="video-grid">
+        <div style="grid-column:1/-1;display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-container"></div>
+
+<script type="module">
+import { initMiniPlayer } from '../js/player.js';
+import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
+import { toast, renderSidebar, createModal } from '../js/app.js';
+
+let currentUser, currentProfile, allVideos = [];
+
+async function init() {
+  currentUser = await requireAuth(); if (!currentUser) return;
+  currentProfile = await getCurrentProfile();
+  initMiniPlayer();
+  document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'video');
+  loadTab('all');
+}
+
+window.loadTab = async function(tab) {
+  ['all','mine','friends'].forEach(t =>
+    document.getElementById('tab-'+t).className = 'btn btn-sm '+(t===tab?'btn-primary':'btn-ghost'));
+  const grid = document.getElementById('video-grid');
+  grid.innerHTML = '<div style="grid-column:1/-1;display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
+
+  let q = supabase.from('videos')
+    .select('*, uploader:profiles!uploader_id(id,full_name,avatar_url)')
+    .order('created_at',{ascending:false}).limit(40);
+
+  if (tab === 'mine') q = q.eq('uploader_id', currentUser.id);
+  else if (tab === 'friends') {
+    const { data: friendships } = await supabase.from('friendships').select('requester_id,addressee_id').or('requester_id.eq.'+currentUser.id+',addressee_id.eq.'+currentUser.id).eq('status','accepted');
+    const ids = (friendships||[]).map(f => f.requester_id === currentUser.id ? f.addressee_id : f.requester_id);
+    if (!ids.length) { grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><h3>No friend videos yet</h3></div>'; return; }
+    q = q.in('uploader_id', ids);
+  }
+
+  const { data } = await q;
+  allVideos = data || [];
+  renderVideos(allVideos);
+};
+
+window.filterVideos = q => renderVideos(!q.trim() ? allVideos : allVideos.filter(v => (v.title+v.description).toLowerCase().includes(q.toLowerCase())));
+
+function renderVideos(videos) {
+  const grid = document.getElementById('video-grid');
+  if (!videos.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div style="font-size:48px;margin-bottom:12px">&#127909;</div><h3>No videos yet</h3></div>';
+    return;
+  }
+  grid.innerHTML = videos.map(v => videoCard(v)).join('');
+}
+
+function videoCard(v) {
+  const thumb = v.thumb_url
+    ? '<img src="'+v.thumb_url+'" alt="" onerror="this.style.display=\'none\'">'
+    : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--text3)">&#127909;</div>';
+  const dur = v.duration ? fmtTime(v.duration) : '';
+  const ago = timeAgo(v.created_at);
+  const avt = avatarUrl(v.uploader?.avatar_url);
+  return '<div class="video-card" onclick="openVideo(\''+v.id+'\')">'+
+    '<div class="video-thumb">'+thumb+
+      '<div class="play-overlay"><div class="play-circle"><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg></div></div>'+
+      (dur?'<span class="video-duration">'+dur+'</span>':'')+
+    '</div>'+
+    '<div class="video-body">'+
+      '<div class="video-title">'+esc(v.title)+'</div>'+
+      '<div class="video-meta">'+
+        '<img class="video-author-avatar" src="'+avt+'" alt="" onerror="this.src=\'../assets/default-avatar.svg\'">'+
+        '<span>'+esc(v.uploader?.full_name||'User')+'</span>'+
+        '<span>&#183;</span><span>'+fmtViews(v.views)+' views</span>'+
+        '<span>&#183;</span><span>'+ago+'</span>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+window.openVideo = async function(vid) {
+  const v = allVideos.find(x => x.id === vid);
+  if (!v) return;
+  let url = v.video_url;
+  if (!url.startsWith('http')) url = supabase.storage.from('videos').getPublicUrl(url).data.publicUrl;
+  await supabase.from('videos').update({views:(v.views||0)+1}).eq('id',vid);
+  v.views = (v.views||0)+1;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'video-modal-overlay';
+  overlay.innerHTML =
+    '<div class="video-modal-inner">'+
+      '<video controls autoplay preload="metadata" src="'+url+'"></video>'+
+      '<div class="video-modal-info">'+
+        '<div class="video-modal-title">'+esc(v.title)+'</div>'+
+        '<div style="font-size:12px;color:rgba(255,255,255,.5)">'+(v.description||'')+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<button class="video-modal-close" onclick="this.closest(\'.video-modal-overlay\').remove()">&#10005;</button>';
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+};
+
+window.openUploadVideo = function() {
+  createModal('Upload Video',
+    '<div class="form-group"><label>Title *</label><input id="vt" placeholder="Video title"></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="vd" placeholder="Describe your video..."></textarea></div>'+
+    '<div class="upload-drop" style="border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;margin-top:8px" onclick="document.getElementById(\'vf\').click()">'+
+      '<div style="font-size:36px;margin-bottom:8px">&#127909;</div>'+
+      '<p style="font-weight:600">Click to select video file</p>'+
+      '<p style="font-size:12px;color:var(--text3)">MP4, WebM, MOV up to 200MB</p>'+
+      '<p id="vfname" style="color:var(--accent);font-size:12px;margin-top:6px"></p>'+
+    '</div>'+
+    '<input type="file" id="vf" accept="video/*" style="display:none" onchange="document.getElementById(\'vfname\').textContent=this.files[0]?.name||\'\'">'+
+    '<div class="form-group" style="margin-top:12px"><label>Thumbnail (optional)</label><input type="file" id="vthumb" accept="image/*"></div>',
+    '<button class="btn btn-ghost" onclick="document.querySelector(\'.modal-overlay\').remove()">Cancel</button>'+
+    '<button class="btn btn-primary" id="vsub" onclick="submitVideo()">Upload</button>'
+  );
+};
+
+window.submitVideo = async function() {
+  const title = document.getElementById('vt').value.trim();
+  const desc  = document.getElementById('vd').value.trim();
+  const vFile = document.getElementById('vf').files[0];
+  const tFile = document.getElementById('vthumb').files[0];
+  if (!title || !vFile) { toast('Title and video file required','error'); return; }
+  const btn = document.getElementById('vsub');
+  btn.disabled = true; btn.textContent = 'Uploading...';
+  try {
+    const vExt = vFile.name.split('.').pop();
+    const vPath = Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+vExt;
+    const {error:ve} = await supabase.storage.from('videos').upload(vPath, vFile);
+    if (ve) throw ve;
+    const videoUrl = supabase.storage.from('videos').getPublicUrl(vPath).data.publicUrl;
+    let thumbUrl = null;
+    if (tFile) {
+      const tp = 'thumbs/'+Date.now()+'.'+tFile.name.split('.').pop();
+      const {error:te} = await supabase.storage.from('videos').upload(tp, tFile);
+      if (!te) thumbUrl = supabase.storage.from('videos').getPublicUrl(tp).data.publicUrl;
+    }
+    let duration = null;
+    try { duration = await new Promise(res => { const a = document.createElement('video'); a.onloadedmetadata = ()=>res(Math.round(a.duration)); a.src=URL.createObjectURL(vFile); }); } catch(e){}
+    const {error:de} = await supabase.from('videos').insert({uploader_id:currentUser.id,title,description:desc||null,video_url:videoUrl,thumb_url:thumbUrl,duration});
+    if (de) throw de;
+    document.querySelector('.modal-overlay')?.remove();
+    toast('Video uploaded!','success');
+    loadTab('all');
+  } catch(e) { toast('Failed: '+e.message,'error'); btn.disabled=false; btn.textContent='Upload'; }
+};
+
+function fmtTime(s) { const m=Math.floor(s/60); return m+':'+(Math.floor(s%60)<10?'0':'')+Math.floor(s%60); }
+function fmtViews(n) { n=parseInt(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
+function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('open');
+init();
+</script>
+</body>
+</html>

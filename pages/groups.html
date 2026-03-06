@@ -1,335 +1,247 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VEtmle — Groups</title>
-    <link rel="stylesheet" href="../css/main.css" />
-    <link rel="stylesheet" href="../css/layout.css" />
-    <link rel="stylesheet" href="../css/components.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar"></aside>
-      <main class="main-content">
-        <div class="topbar">
-          <button
-            onclick="toggleSidebar()"
-            style="
-              background: none;
-              border: none;
-              color: var(--text);
-              font-size: 22px;
-            "
-          >
-            ☰
-          </button>
-          <span style="font-weight: 700">Groups</span>
-        </div>
-
-        <div class="page-container wide">
-          <div
-            style="
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              margin-bottom: 16px;
-            "
-          >
-            <div class="page-title" style="margin-bottom: 0">🏛️ Groups</div>
-            <button class="btn btn-primary" onclick="openCreateGroup()">
-              ➕ Create Group
-            </button>
-          </div>
-
-          <div
-            style="
-              display: flex;
-              gap: 4px;
-              margin-bottom: 16px;
-              flex-wrap: wrap;
-            "
-          >
-            <button
-              class="btn btn-primary btn-sm"
-              id="tab-my"
-              onclick="loadTab('my')"
-            >
-              My Groups
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              id="tab-discover"
-              onclick="loadTab('discover')"
-            >
-              Discover
-            </button>
-          </div>
-
-          <div
-            class="search-bar card"
-            style="margin-bottom: 16px; padding: 0 16px"
-          >
-            <span class="search-icon">🔍</span>
-            <input
-              type="text"
-              placeholder="Search groups..."
-              oninput="searchGroups(this.value)"
-              style="
-                background: transparent;
-                border: none;
-                box-shadow: none;
-                padding: 12px 0;
-              "
-            />
-          </div>
-
-          <div id="groups-content">
-            <div style="display: flex; justify-content: center; padding: 40px">
-              <div class="spinner"></div>
-            </div>
-          </div>
-        </div>
-      </main>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEtmle — Communities</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    .community-card {
+      background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      overflow:hidden; cursor:pointer; transition:all .18s; display:flex; flex-direction:column;
+    }
+    .community-card:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:0 8px 32px rgba(0,0,0,.3); }
+    .comm-cover { height:100px; background:linear-gradient(135deg,#1a2040,#0e1428); position:relative; overflow:hidden; }
+    .comm-cover img { width:100%;height:100%;object-fit:cover; }
+    .comm-avatar-wrap { position:absolute; bottom:-24px; left:16px; }
+    .comm-avatar { width:52px;height:52px;border-radius:12px;border:3px solid var(--surface);object-fit:cover;background:var(--surface3);display:block; }
+    .comm-body { padding:32px 16px 14px; flex:1; }
+    .comm-name { font-weight:800; font-size:15px; margin-bottom:3px; }
+    .comm-members { font-size:12px; color:var(--text3); margin-bottom:10px; }
+    .comm-desc { font-size:12px; color:var(--text2); line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .comm-footer { padding:10px 16px; border-top:1px solid var(--border); display:flex; gap:8px; }
+    .communities-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
+    .private-badge { position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px; }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:22px">&#9776;</button>
+      <span style="font-weight:700">Communities</span>
     </div>
-    <div id="toast-container"></div>
 
-    <script type="module">
-      import {
-        supabase,
-        requireAuth,
-        getCurrentProfile,
-        avatarUrl,
-      } from "../js/supabase.js";
-      import { toast, renderSidebar, createModal } from "../js/app.js";
-
-      let currentUser = null;
-      let allGroups = [];
-
-      async function init() {
-        currentUser = await requireAuth();
-        if (!currentUser) return;
-        const profile = await getCurrentProfile();
-        document.getElementById("sidebar").innerHTML = renderSidebar(
-          profile,
-          "groups",
-        );
-        await loadTab("my");
-      }
-
-      window.loadTab = async function (tab) {
-        ["my", "discover"].forEach((t) => {
-          document.getElementById(`tab-${t}`).className =
-            `btn btn-sm ${t === tab ? "btn-primary" : "btn-ghost"}`;
-        });
-
-        const content = document.getElementById("groups-content");
-        content.innerHTML =
-          '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
-
-        if (tab === "my") await loadMyGroups(content);
-        else await loadDiscover(content);
-      };
-
-      async function loadMyGroups(content) {
-        const { data: memberships } = await supabase
-          .from("group_members")
-          .select("group_id, role")
-          .eq("user_id", currentUser.id);
-
-        if (!memberships?.length) {
-          content.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">🏛️</div>
-        <h3>You haven't joined any groups yet</h3>
-        <p><a href="#" onclick="loadTab('discover')">Discover groups</a> or create your own!</p>
+    <div class="page-container wide" style="max-width:1040px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h1 style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900">Communities</h1>
+          <p style="color:var(--text3);font-size:13px">Join groups and connect with people who share your interests</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreate()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Community
+        </button>
       </div>
-    `;
-          return;
-        }
 
-        const { data: groups } = await supabase
-          .from("groups")
-          .select("*")
-          .in(
-            "id",
-            memberships.map((m) => m.group_id),
-          );
+      <!-- Tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" id="tab-discover"  onclick="loadTab('discover')">Discover</button>
+        <button class="btn btn-ghost btn-sm"   id="tab-mine"      onclick="loadTab('mine')">My Communities</button>
+        <button class="btn btn-ghost btn-sm"   id="tab-managed"   onclick="loadTab('managed')">I Manage</button>
+      </div>
 
-        allGroups = groups || [];
-        renderGroups(content, allGroups, memberships);
-      }
+      <!-- Category filter -->
+      <div id="cat-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn btn-ghost btn-sm active-cat" id="cat-all" onclick="setCat('all',this)">All</button>
+        <button class="btn btn-ghost btn-sm" id="cat-tech"   onclick="setCat('tech',this)">&#128187; Tech</button>
+        <button class="btn btn-ghost btn-sm" id="cat-art"    onclick="setCat('art',this)">&#127912; Art</button>
+        <button class="btn btn-ghost btn-sm" id="cat-gaming" onclick="setCat('gaming',this)">&#127918; Gaming</button>
+        <button class="btn btn-ghost btn-sm" id="cat-music"  onclick="setCat('music',this)">&#127925; Music</button>
+        <button class="btn btn-ghost btn-sm" id="cat-sport"  onclick="setCat('sport',this)">&#9917; Sports</button>
+        <button class="btn btn-ghost btn-sm" id="cat-other"  onclick="setCat('other',this)">&#128220; Other</button>
+      </div>
 
-      async function loadDiscover(content) {
-        const { data: groups } = await supabase
-          .from("groups")
-          .select("*")
-          .order("members_count", { ascending: false })
-          .limit(24);
+      <!-- Search -->
+      <div class="search-bar card" style="margin-bottom:16px;padding:0 14px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Search communities..." style="background:transparent;border:none;box-shadow:none;padding:11px 8px" oninput="filterComms(this.value)">
+      </div>
 
-        const { data: myMemberships } = await supabase
-          .from("group_members")
-          .select("group_id")
-          .eq("user_id", currentUser.id);
-
-        const myGroupIds = new Set(
-          (myMemberships || []).map((m) => m.group_id),
-        );
-
-        allGroups = groups || [];
-        renderGroups(content, allGroups, null, myGroupIds);
-      }
-
-      function renderGroups(content, groups, memberships, joinedIds) {
-        if (!groups.length) {
-          content.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>No groups found</h3></div>`;
-          return;
-        }
-
-        const membershipMap = new Map(
-          (memberships || []).map((m) => [m.group_id, m.role]),
-        );
-
-        content.innerHTML = `
-    <div class="groups-grid">
-      ${groups
-        .map((g) => {
-          const isMember = memberships
-            ? membershipMap.has(g.id)
-            : joinedIds?.has(g.id);
-          const role = membershipMap.get(g.id);
-          return `
-          <div class="group-card" onclick="window.location.href='../pages/group.html?id=${g.id}'">
-            <div class="group-cover" style="${g.cover_url ? `background:url('${g.cover_url}') center/cover` : "background:linear-gradient(135deg,#1a2040,#0e1428)"}">
-              <div class="group-avatar-wrap">
-                ${g.avatar_url ? `<img src="${g.avatar_url}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px">🏛️</div>`}
-              </div>
-            </div>
-            <div class="group-body">
-              <div class="group-name">${g.name}</div>
-              <div class="group-desc">${g.description || "No description"}</div>
-              <div style="display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:12px;color:var(--text3)">👥 ${g.members_count} members</span>
-                ${
-                  isMember
-                    ? `<span class="btn btn-ghost btn-sm" style="cursor:default">${role === "owner" ? "👑 Owner" : "✓ Joined"}</span>`
-                    : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();joinGroup('${g.id}', this)">Join</button>`
-                }
-              </div>
-            </div>
-          </div>
-        `;
-        })
-        .join("")}
+      <div id="comms-container" class="communities-grid">
+        <div style="grid-column:1/-1;display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>
+      </div>
     </div>
-  `;
-      }
+  </main>
+</div>
+<div id="toast-container"></div>
 
-      window.joinGroup = async function (groupId, btn) {
-        btn.disabled = true;
-        btn.textContent = "...";
-        const { error } = await supabase.from("group_members").insert({
-          group_id: groupId,
-          user_id: currentUser.id,
-          role: "member",
-        });
-        if (error) {
-          btn.disabled = false;
-          btn.textContent = "Join";
-          toast("Failed to join", "error");
-          return;
-        }
-        await supabase
-          .from("groups")
-          .update({ members_count: supabase.rpc("increment") })
-          .eq("id", groupId);
-        btn.className = "btn btn-ghost btn-sm";
-        btn.textContent = "✓ Joined";
-        btn.disabled = true;
-        toast("Joined group!", "success");
-      };
+<script type="module">
+import { initMiniPlayer } from '../js/player.js';
+import { supabase, requireAuth, getCurrentProfile, avatarUrl } from '../js/supabase.js';
+import { toast, renderSidebar, createModal } from '../js/app.js';
 
-      window.searchGroups = function (query) {
-        if (!query.trim()) {
-          renderGroups(
-            document.getElementById("groups-content"),
-            allGroups,
-            null,
-          );
-          return;
-        }
-        const filtered = allGroups.filter((g) =>
-          g.name.toLowerCase().includes(query.toLowerCase()),
-        );
-        renderGroups(document.getElementById("groups-content"), filtered, null);
-      };
+let currentUser, currentProfile, allComms=[], currentTab='discover', currentCat='all';
 
-      window.openCreateGroup = function () {
-        const overlay = createModal(
-          "Create Group",
-          `
-    <div class="form-group"><label>Group Name *</label><input id="group-name" placeholder="e.g. Photography Lovers"></div>
-    <div class="form-group"><label>Description</label><textarea id="group-desc" placeholder="What is this group about?"></textarea></div>
-    <div class="form-group">
-      <label>Privacy</label>
-      <select id="group-privacy">
-        <option value="false">🌍 Public — Anyone can join</option>
-        <option value="true">🔒 Private — Invite only</option>
-      </select>
-    </div>
-  `,
-          `
-    <button class="btn btn-ghost" onclick="document.querySelector('.modal-overlay').remove()">Cancel</button>
-    <button class="btn btn-primary" onclick="createGroup()">Create Group</button>
-  `,
-        );
-      };
+async function init() {
+  currentUser = await requireAuth(); if (!currentUser) return;
+  currentProfile = await getCurrentProfile();
+  initMiniPlayer();
+  document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'groups');
+  loadTab('discover');
+}
 
-      window.createGroup = async function () {
-        const name = document.getElementById("group-name").value.trim();
-        const desc = document.getElementById("group-desc").value.trim();
-        const isPrivate =
-          document.getElementById("group-privacy").value === "true";
+window.loadTab = async function(tab) {
+  currentTab = tab;
+  ['discover','mine','managed'].forEach(t =>
+    document.getElementById('tab-'+t).className = 'btn btn-sm '+(t===tab?'btn-primary':'btn-ghost'));
+  const c = document.getElementById('comms-container');
+  c.innerHTML = '<div style="grid-column:1/-1;display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
 
-        if (!name) {
-          toast("Group name is required", "error");
-          return;
-        }
+  let q = supabase.from('groups').select('*, owner:profiles!owner_id(id,full_name,avatar_url)').order('members_count',{ascending:false}).limit(40);
+  if (tab==='mine') {
+    const {data:memberships} = await supabase.from('group_members').select('group_id').eq('user_id',currentUser.id);
+    const ids=(memberships||[]).map(m=>m.group_id);
+    if (!ids.length) { c.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div style="font-size:48px;margin-bottom:12px">&#127968;</div><h3>You haven\'t joined any communities</h3></div>'; return; }
+    q = q.in('id', ids);
+  } else if (tab==='managed') {
+    q = q.eq('owner_id', currentUser.id);
+  }
+  if (currentCat!=='all') q = q.eq('category', currentCat);
 
-        const { data: group, error } = await supabase
-          .from("groups")
-          .insert({
-            name,
-            description: desc,
-            owner_id: currentUser.id,
-            is_private: isPrivate,
-            members_count: 1,
-          })
-          .select()
-          .single();
+  const {data} = await q;
+  allComms = data||[];
 
-        if (error) {
-          toast("Failed to create group", "error");
-          return;
-        }
+  // Get memberships for join/leave buttons
+  const {data:myMemberships} = await supabase.from('group_members').select('group_id').eq('user_id',currentUser.id);
+  const joined = new Set((myMemberships||[]).map(m=>m.group_id));
+  renderComms(allComms, joined);
+};
 
-        // Add owner as member
-        await supabase.from("group_members").insert({
-          group_id: group.id,
-          user_id: currentUser.id,
-          role: "owner",
-        });
+window.setCat = function(cat, el) {
+  currentCat = cat;
+  document.querySelectorAll('#cat-bar button').forEach(b=>{b.classList.remove('active-cat');b.style.background='';b.style.color='';b.style.borderColor='';});
+  el.classList.add('active-cat'); el.style.background='var(--accent)'; el.style.color='#fff'; el.style.borderColor='var(--accent)';
+  loadTab(currentTab);
+};
 
-        document.querySelector(".modal-overlay")?.remove();
-        toast("Group created!", "success");
-        window.location.href = `../pages/group.html?id=${group.id}`;
-      };
+window.filterComms = function(q) {
+  if (!q.trim()) { loadTab(currentTab); return; }
+  const lq=q.toLowerCase();
+  const filtered=allComms.filter(g=>(g.name||'').toLowerCase().includes(lq)||(g.description||'').toLowerCase().includes(lq));
+  renderComms(filtered, new Set());
+};
 
-      window.toggleSidebar = function () {
-        document.getElementById("sidebar").classList.toggle("open");
-      };
+function renderComms(comms, joined) {
+  const c = document.getElementById('comms-container');
+  if (!comms.length) {
+    c.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div style="font-size:48px;margin-bottom:12px">&#127968;</div><h3>No communities found</h3><p style="color:var(--text3)">Be the first to create one!</p></div>';
+    return;
+  }
+  c.innerHTML = comms.map(g => commCard(g, joined.has(g.id))).join('');
+}
 
-      init();
-    </script>
-  </body>
+function commCard(g, isMember) {
+  const av = g.avatar_url ? avatarUrl(g.avatar_url) : '../assets/default-avatar.svg';
+  const coverBg = g.cover_url ? 'background:url('+g.cover_url+') center/cover' : 'background:linear-gradient(135deg,#1a2040,#0e1428)';
+  const fmt = n => n>=1000?(n/1000).toFixed(1)+'K':String(n||0);
+  return '<div class="community-card">'+
+    '<div class="comm-cover" style="'+coverBg+'">'+
+      (g.is_private?'<div class="private-badge">&#128274; Private</div>':'')+
+      '<div class="comm-avatar-wrap">'+
+        '<img class="comm-avatar" src="'+av+'" alt="" onerror="this.src=\'../assets/default-avatar.svg\'">'+
+      '</div>'+
+    '</div>'+
+    '<div class="comm-body" onclick="window.location.href=\'group.html?id='+g.id+'\'">'+
+      '<div class="comm-name">'+esc(g.name)+'</div>'+
+      '<div class="comm-members"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> '+fmt(g.members_count)+' members</div>'+
+      (g.description?'<div class="comm-desc">'+esc(g.description)+'</div>':'')+
+    '</div>'+
+    '<div class="comm-footer">'+
+      '<button class="btn btn-sm '+(isMember?'btn-ghost':'btn-primary')+'" id="join-'+g.id+'" onclick="toggleJoin(\''+g.id+'\','+isMember+',this)">'+
+        (isMember?'Joined':'Join')+
+      '</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="window.location.href=\'group.html?id='+g.id+'\'">View</button>'+
+    '</div>'+
+  '</div>';
+}
+
+window.toggleJoin = async function(gid, isMember, btn) {
+  btn.disabled = true;
+  if (isMember) {
+    await supabase.from('group_members').delete().match({group_id:gid, user_id:currentUser.id});
+    await supabase.from('groups').update({members_count:supabase.rpc('decrement')}).eq('id',gid);
+    btn.className='btn btn-sm btn-primary'; btn.textContent='Join';
+    btn.onclick=()=>toggleJoin(gid,false,btn);
+    toast('Left community','info');
+  } else {
+    await supabase.from('group_members').insert({group_id:gid, user_id:currentUser.id, role:'member'});
+    await supabase.from('groups').update({members_count:(await supabase.from('group_members').select('id',{count:'exact'}).eq('group_id',gid)).count}).eq('id',gid);
+    btn.className='btn btn-sm btn-ghost'; btn.textContent='Joined';
+    btn.onclick=()=>toggleJoin(gid,true,btn);
+    toast('Joined community!','success');
+  }
+  btn.disabled=false;
+};
+
+window.openCreate = function() {
+  createModal('Create Community',
+    '<div class="form-group"><label>Name *</label><input id="cn" placeholder="Community name"></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="cd" placeholder="What is this community about?"></textarea></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+      '<div class="form-group"><label>Category</label>'+
+        '<select id="cc"><option value="tech">Tech</option><option value="art">Art</option><option value="gaming">Gaming</option><option value="music">Music</option><option value="sport">Sports</option><option value="other">Other</option></select>'+
+      '</div>'+
+      '<div class="form-group"><label>Privacy</label>'+
+        '<select id="cp"><option value="false">Public</option><option value="true">Private</option></select>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-group"><label>Cover Image</label><input type="file" id="ccover" accept="image/*"></div>'+
+    '<div class="form-group"><label>Community Avatar</label><input type="file" id="cavatar" accept="image/*"></div>',
+    '<button class="btn btn-ghost" onclick="document.querySelector(\'.modal-overlay\').remove()">Cancel</button>'+
+    '<button class="btn btn-primary" id="csub" onclick="submitCreate()">Create</button>'
+  );
+};
+
+window.submitCreate = async function() {
+  const name = document.getElementById('cn').value.trim();
+  const desc = document.getElementById('cd').value.trim();
+  const cat  = document.getElementById('cc').value;
+  const priv = document.getElementById('cp').value==='true';
+  const coverFile  = document.getElementById('ccover').files[0];
+  const avatarFile = document.getElementById('cavatar').files[0];
+  if (!name) { toast('Name is required','error'); return; }
+  const btn = document.getElementById('csub'); btn.disabled=true; btn.textContent='Creating...';
+  try {
+    let coverUrl=null, avatarUrl=null;
+    if (coverFile) {
+      const p='covers/'+Date.now()+'.'+coverFile.name.split('.').pop();
+      const {error:e} = await supabase.storage.from('groups').upload(p, coverFile);
+      if (!e) coverUrl = supabase.storage.from('groups').getPublicUrl(p).data.publicUrl;
+    }
+    if (avatarFile) {
+      const p='avatars/'+Date.now()+'.'+avatarFile.name.split('.').pop();
+      const {error:e} = await supabase.storage.from('groups').upload(p, avatarFile);
+      if (!e) avatarUrl = supabase.storage.from('groups').getPublicUrl(p).data.publicUrl;
+    }
+    const {data:g, error} = await supabase.from('groups').insert({
+      owner_id:currentUser.id, name, description:desc||null, is_private:priv,
+      cover_url:coverUrl, avatar_url:avatarUrl, category:cat, members_count:1,
+    }).select().single();
+    if (error) throw error;
+    await supabase.from('group_members').insert({group_id:g.id, user_id:currentUser.id, role:'owner'});
+    document.querySelector('.modal-overlay')?.remove();
+    toast('Community created!','success');
+    window.location.href='group.html?id='+g.id;
+  } catch(e) { toast('Failed: '+e.message,'error'); btn.disabled=false; btn.textContent='Create'; }
+};
+
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+window.toggleSidebar=()=>document.getElementById('sidebar').classList.toggle('open');
+init();
+</script>
+</body>
 </html>

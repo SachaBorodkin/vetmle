@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEtmle — Bookmarks</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:22px">&#9776;</button>
+      <span style="font-weight:700">Bookmarks</span>
+    </div>
+    <div class="page-container" style="max-width:680px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <h1 style="font-family:'Nunito',sans-serif;font-size:24px;font-weight:900">Saved Posts</h1>
+          <p style="color:var(--text3);font-size:13px">Posts you've bookmarked</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="clearAll()" id="clear-btn" style="display:none">Clear All</button>
+      </div>
+      <div id="bookmarks-list">
+        <div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-container"></div>
+
+<script type="module">
+import { initMiniPlayer } from '../js/player.js';
+import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
+import { toast, renderSidebar, renderPost } from '../js/app.js';
+
+let currentUser, currentProfile;
+
+async function init() {
+  currentUser = await requireAuth(); if (!currentUser) return;
+  currentProfile = await getCurrentProfile();
+  initMiniPlayer();
+  document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'bookmarks');
+  loadBookmarks();
+}
+
+async function loadBookmarks() {
+  const { data } = await supabase.from('bookmarks')
+    .select('created_at, post:posts(*,author:profiles!author_id(id,full_name,username,avatar_url))')
+    .eq('user_id', currentUser.id)
+    .order('created_at',{ascending:false});
+
+  const list = document.getElementById('bookmarks-list');
+  const posts = (data||[]).map(b=>b.post).filter(Boolean);
+
+  if (!posts.length) {
+    list.innerHTML = '<div class="empty-state"><div style="font-size:48px;margin-bottom:12px">&#128278;</div><h3>No bookmarks yet</h3><p style="color:var(--text3)">Tap the bookmark icon on any post to save it here.</p></div>';
+    return;
+  }
+  document.getElementById('clear-btn').style.display = 'inline-flex';
+
+  // Get user likes
+  const {data:likes} = await supabase.from('likes').select('post_id').eq('user_id',currentUser.id);
+  const likedSet = new Set((likes||[]).map(l=>l.post_id));
+
+  list.innerHTML = posts.map(p => {
+    p.user_liked = likedSet.has(p.id);
+    return '<div style="position:relative">'+
+      renderPost(p, currentUser.id)+
+      '<button onclick="removeBookmark(\''+p.id+'\',this)" style="position:absolute;top:14px;right:52px;background:none;border:none;cursor:pointer;color:var(--accent)" title="Remove bookmark">'+
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>'+
+      '</button>'+
+    '</div>';
+  }).join('');
+}
+
+window.removeBookmark = async function(postId, btn) {
+  await supabase.from('bookmarks').delete().match({user_id:currentUser.id, post_id:postId});
+  btn.closest('[style*="position:relative"]')?.remove();
+  toast('Bookmark removed','info');
+  if (!document.querySelector('.post-card')) {
+    document.getElementById('bookmarks-list').innerHTML = '<div class="empty-state"><div style="font-size:48px;margin-bottom:12px">&#128278;</div><h3>No bookmarks yet</h3></div>';
+    document.getElementById('clear-btn').style.display = 'none';
+  }
+};
+
+window.clearAll = async function() {
+  if (!confirm('Remove all bookmarks?')) return;
+  await supabase.from('bookmarks').delete().eq('user_id', currentUser.id);
+  document.getElementById('bookmarks-list').innerHTML = '<div class="empty-state"><div style="font-size:48px;margin-bottom:12px">&#128278;</div><h3>No bookmarks yet</h3></div>';
+  document.getElementById('clear-btn').style.display = 'none';
+  toast('All bookmarks cleared','success');
+};
+
+
+window.bookmarkPost = async function(postId) {
+  const { error } = await supabase.from('bookmarks').insert({ user_id: currentUser.id, post_id: postId });
+  if (error && error.code === '23505') { toast('Already saved', 'info'); return; }
+  if (error) { toast('Error saving post', 'error'); return; }
+  toast('Post saved to bookmarks!', 'success');
+};
+
+window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('open');
+init();
+</script>
+</body>
+</html>

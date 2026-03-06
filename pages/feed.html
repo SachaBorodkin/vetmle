@@ -35,6 +35,14 @@
         </div>
 
         <!-- Compose Post -->
+        <!-- Stories -->
+        <div class="stories-strip" id="stories-strip">
+          <div class="story-item story-add" onclick="toast('Stories coming soon!','info')">
+            <div class="story-ring"><div class="story-add-icon">+</div></div>
+            <div class="story-name">Add Story</div>
+          </div>
+        </div>
+
         <div class="post-compose card" id="compose-box">
           <div class="compose-row">
             <img id="compose-avatar" src="../assets/default-avatar.svg" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center;flex-shrink:0;display:block;background:var(--surface3)">
@@ -77,13 +85,40 @@
           <button class="btn btn-ghost" onclick="loadMorePosts()">Load More</button>
         </div>
       </div>
-    </div>
+          </div><!-- end left col -->
+
+      <!-- Right Sidebar -->
+      <div class="right-sidebar" id="right-sidebar" style="display:none">
+        <!-- Online Friends Widget -->
+        <div class="widget" id="online-widget">
+          <div class="widget-title">
+            <span>Online Friends</span>
+            <span id="online-count" style="font-size:11px;color:var(--text3)"></span>
+          </div>
+          <div id="online-list"><div style="font-size:12px;color:var(--text3)">Loading...</div></div>
+        </div>
+        <!-- Suggested Communities -->
+        <div class="widget">
+          <div class="widget-title"><span>Suggested Communities</span></div>
+          <div id="suggested-comms"><div style="font-size:12px;color:var(--text3)">Loading...</div></div>
+        </div>
+        <!-- Upcoming Events -->
+        <div class="widget">
+          <div class="widget-title">
+            <span>Upcoming Events</span>
+            <a href="../pages/events.html" style="font-size:11px;color:var(--accent);text-decoration:none">See all</a>
+          </div>
+          <div id="upcoming-events"><div style="font-size:12px;color:var(--text3)">Loading...</div></div>
+        </div>
+      </div>
+    </div><!-- end two-col -->
   </main>
 </div>
 
 <div id="toast-container"></div>
 
 <script type="module">
+import { initMiniPlayer } from '../js/player.js';
 import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
 import { toast, renderSidebar, renderPost, formatCount } from '../js/app.js';
 
@@ -100,6 +135,7 @@ async function init() {
   currentProfile = await getCurrentProfile();
 
   // Render sidebar
+  initMiniPlayer();
   document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'feed');
 
   // Set compose avatar
@@ -503,15 +539,144 @@ function setupRealtime() {
     .subscribe();
 }
 
-window.toggleSidebar = function() {
-  document.getElementById('sidebar').classList.toggle('open');
+
+window.bookmarkPost = async function(postId) {
+  const { error } = await supabase.from('bookmarks').insert({ user_id: currentUser.id, post_id: postId });
+  if (error && error.code === '23505') { toast('Already saved', 'info'); return; }
+  if (error) { toast('Error saving post', 'error'); return; }
+  toast('Post saved to bookmarks!', 'success');
 };
 
-window.addStory = function() {
-  toast('Stories coming soon!', 'info');
-};
+// ── Right sidebar widgets ─────────────────────────────────────
+async function loadRightSidebar() {
+  // Online friends
+  const { data: friendships } = await supabase.from('friendships')
+    .select('requester_id,addressee_id')
+    .or('requester_id.eq.'+currentUser.id+',addressee_id.eq.'+currentUser.id)
+    .eq('status','accepted');
+  const friendIds = (friendships||[]).map(f => f.requester_id===currentUser.id ? f.addressee_id : f.requester_id);
 
-init().then(loadStories);
+  if (friendIds.length) {
+    const { data: onlineFriends } = await supabase.from('profiles')
+      .select('id,full_name,avatar_url,status')
+      .in('id', friendIds.slice(0,20))
+      .order('last_seen',{ascending:false})
+      .limit(8);
+    const ol = document.getElementById('online-list');
+    document.getElementById('online-count').textContent = (onlineFriends||[]).length + ' friends';
+    if ((onlineFriends||[]).length) {
+      ol.innerHTML = onlineFriends.map(u =>
+        '<div class="widget-user" onclick="window.location.href='../pages/profile.html?id='+u.id+''">'+
+          '<div style="position:relative;flex-shrink:0">'+
+            '<img src="'+(avatarUrl(u.avatar_url))+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover">'+
+            '<span style="position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--surface)"></span>'+
+          '</div>'+
+          '<div><div class="widget-user-name">'+esc(u.full_name)+'</div></div>'+
+        '</div>'
+      ).join('');
+    } else {
+      ol.innerHTML = '<p style="font-size:12px;color:var(--text3)">No friends online</p>';
+    }
+  } else {
+    document.getElementById('online-list').innerHTML = '<p style="font-size:12px;color:var(--text3)">Add friends to see them here</p>';
+  }
+
+  // Suggested communities
+  const { data: groups } = await supabase.from('groups').select('id,name,members_count,avatar_url').order('members_count',{ascending:false}).limit(4);
+  const sc = document.getElementById('suggested-comms');
+  if ((groups||[]).length) {
+   ol.innerHTML = onlineFriends.map(u => `
+  <div class="widget-user" onclick="window.location.href='../pages/profile.html?id=${u.id}'">
+    <div style="position:relative;flex-shrink:0">
+      <img src="${avatarUrl(u.avatar_url)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">
+      <span style="position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--surface)"></span>
+    </div>
+    <div><div class="widget-user-name">${esc(u.full_name)}</div></div>
+  </div>
+`).join('');
+  } else {
+    sc.innerHTML = '<p style="font-size:12px;color:var(--text3)">No communities yet</p>';
+  }
+
+  // Upcoming events
+  const { data: events } = await supabase.from('events').select('id,title,starts_at,location').gte('starts_at',new Date().toISOString()).order('starts_at',{ascending:true}).limit(3);
+  const ue = document.getElementById('upcoming-events');
+  if ((events||[]).length) {
+   ue.innerHTML = events.map(ev => {
+  const d = new Date(ev.starts_at);
+  return `
+    <div class="widget-user" onclick="window.location.href='../pages/events.html'">
+      <div style="width:32px;height:32px;border-radius:8px;background:rgba(91,127,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+        <span style="font-size:14px;font-weight:800;font-family:Nunito,sans-serif;color:var(--accent);line-height:1">${d.getDate()}</span>
+        <span style="font-size:9px;color:var(--text3)">${d.toLocaleDateString('en',{month:'short'}).toUpperCase()}</span>
+      </div>
+      <div>
+        <div class="widget-user-name">${esc(ev.title)}</div>
+        ${ev.location ? `<div class="widget-user-sub">&#128205; ${esc(ev.location)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}).join('');
+  } else {
+    ue.innerHTML = '<p style="font-size:12px;color:var(--text3)">No upcoming events</p>';
+  }
+
+  // Stories: load friends' avatars
+// ── Stories: load friends' avatars ──
+const strip = document.getElementById('stories-strip');
+if (strip && friendIds.length) {
+  const { data: storyFriends } = await supabase
+    .from('profiles')
+    .select('id,full_name,avatar_url')
+    .in('id', friendIds.slice(0, 8));
+
+  // Clear the strip first
+  strip.innerHTML = '';
+
+  // Add the "Add Story" button
+  const addStoryDiv = document.createElement('div');
+  addStoryDiv.className = 'story-item story-add';
+  addStoryDiv.innerHTML = `
+    <div class="story-ring"><div class="story-add-icon">+</div></div>
+    <div class="story-name">Add Story</div>
+  `;
+  addStoryDiv.addEventListener('click', () => toast('Stories coming soon!', 'info'));
+  strip.appendChild(addStoryDiv);
+
+  // Add stories from friends
+  (storyFriends || []).forEach(u => {
+    const storyDiv = document.createElement('div');
+    storyDiv.className = 'story-item';
+
+    const storyRing = document.createElement('div');
+    storyRing.className = 'story-ring';
+
+    const img = document.createElement('img');
+    img.className = 'story-avatar';
+    img.src = avatarUrl(u.avatar_url);
+    img.alt = '';
+    img.onerror = () => { img.src = '../assets/default-avatar.svg'; };
+    storyRing.appendChild(img);
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'story-name';
+    nameDiv.textContent = esc(u.full_name.split(' ')[0]);
+
+    storyDiv.appendChild(storyRing);
+    storyDiv.appendChild(nameDiv);
+
+    storyDiv.addEventListener('click', () => {
+      window.location.href = `../pages/profile.html?id=${encodeURIComponent(u.id)}`;
+    });
+
+    strip.appendChild(storyDiv);
+  });
+}
+
+init().then(() => {
+  loadStories();
+  loadRightSidebar();
+});
 </script>
 </body>
 </html>
