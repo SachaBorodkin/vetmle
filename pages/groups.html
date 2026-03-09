@@ -27,6 +27,7 @@
   </style>
 </head>
 <body>
+<header class="vk-header" id="vk-header"></header>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main-content">
@@ -35,7 +36,7 @@
       <span style="font-weight:700">Communities</span>
     </div>
 
-    <div class="page-container wide" style="max-width:1040px">
+    <div class="page page-wide" style="max-width:1040px;margin:0 auto;padding:14px" style="max-width:1040px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div>
           <h1 style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900">Communities</h1>
@@ -90,6 +91,7 @@ async function init() {
   currentUser = await requireAuth(); if (!currentUser) return;
   currentProfile = await getCurrentProfile();
   initMiniPlayer();
+  renderHeader(profile, 'groups');
   document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'groups');
   loadTab('discover');
 }

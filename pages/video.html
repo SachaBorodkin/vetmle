@@ -35,6 +35,7 @@
   </style>
 </head>
 <body>
+<header class="vk-header" id="vk-header"></header>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main-content">
@@ -43,7 +44,7 @@
       <span style="font-weight:700">Video</span>
     </div>
 
-    <div class="page-container wide" style="max-width:1040px">
+    <div class="page page-wide" style="max-width:1040px;margin:0 auto;padding:14px" style="max-width:1040px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
           <h1 style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900;background:linear-gradient(135deg,#f55d6e,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VEtmle Video</h1>
@@ -85,6 +86,7 @@ async function init() {
   currentUser = await requireAuth(); if (!currentUser) return;
   currentProfile = await getCurrentProfile();
   initMiniPlayer();
+  renderHeader(profile, 'video');
   document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'video');
   loadTab('all');
 }

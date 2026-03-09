@@ -9,553 +9,415 @@
   <link rel="stylesheet" href="../css/components.css">
 </head>
 <body>
+<header class="vk-header" id="vk-header"></header>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main-content">
     <div class="topbar">
-      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:22px">☰</button>
-      <span id="topbar-name" style="font-weight:700"></span>
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:20px">&#9776;</button>
     </div>
 
-    <div class="page-container wide" style="max-width:860px">
-      <div id="profile-container">
-        <div style="display:flex;justify-content:center;padding:60px">
-          <div class="spinner"></div>
+    <div class="page" style="max-width:900px">
+
+      <!-- Profile header card -->
+      <div class="prof-card" id="profile-header">
+        <div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>
+      </div>
+
+      <!-- Profile tabs bar -->
+      <div id="profile-tabs-bar" style="display:none" class="prof-card" style="margin-bottom:12px">
+        <div class="prof-tabs">
+          <button class="profile-tab active" onclick="showTab('posts',this)">Wall</button>
+          <button class="profile-tab"        onclick="showTab('photos',this)">Photos</button>
+          <button class="profile-tab"        onclick="showTab('friends',this)">Friends</button>
+          <button class="profile-tab"        onclick="showTab('info',this)">Info</button>
         </div>
       </div>
+
+      <!-- Tab content -->
+      <div id="tab-posts">
+        <div id="wall-compose" style="display:none" class="post-compose">
+          <div class="compose-row">
+            <img id="wall-avatar" src="../assets/default-avatar.svg"
+              style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0"
+              onerror="this.src='../assets/default-avatar.svg'">
+            <textarea class="compose-input" id="wall-text"
+              placeholder="Write on your wall…"
+              oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,200)+'px'"
+              onfocus="document.getElementById('wall-footer').style.display='flex'"></textarea>
+          </div>
+          <div id="wall-footer" style="display:none" class="compose-footer">
+            <div></div>
+            <button class="btn btn-primary btn-sm" onclick="postOnWall()">Post</button>
+          </div>
+        </div>
+        <div id="wall-feed"></div>
+      </div>
+
+      <div id="tab-photos" style="display:none">
+        <div class="prof-card" style="padding:12px">
+          <div id="photos-grid" class="photos-grid"></div>
+        </div>
+      </div>
+
+      <div id="tab-friends" style="display:none">
+        <div class="prof-card" style="padding:12px">
+          <div id="friends-grid" class="friends-grid"></div>
+        </div>
+      </div>
+
+      <div id="tab-info" style="display:none">
+        <div class="prof-card" id="info-section"></div>
+      </div>
+
     </div>
   </main>
 </div>
 <div id="toast-container"></div>
 
 <script type="module">
-import { supabase, requireAuth, getCurrentProfile, avatarUrl, coverUrl, timeAgo } from '../js/supabase.js';
-import { toast, renderSidebar, renderPost, createModal, formatCount } from '../js/app.js';
+import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
+import { toast, renderSidebar, renderHeader, renderPost, createModal } from '../js/app.js';
+import { initMiniPlayer } from '../js/player.js';
 
-const params = new URLSearchParams(location.search);
-const profileId = params.get('id');
-
-let currentUser = null;
-let currentProfile = null;
-let viewedProfile = null;
-let friendshipStatus = null;
-let activeTab = 'wall';
+let user, myProfile, viewProfile;
+const pid = new URLSearchParams(location.search).get('id');
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 
 async function init() {
-  currentUser = await requireAuth();
-  if (!currentUser) return;
-  currentProfile = await getCurrentProfile();
+  user      = await requireAuth(); if (!user) return;
+  myProfile = await getCurrentProfile();
+  renderHeader(myProfile, 'profile');
+  document.getElementById('sidebar').innerHTML = renderSidebar(myProfile, 'profile');
+  initMiniPlayer();
 
-  document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'profile');
-
-  const id = profileId || currentUser.id;
-  await loadProfile(id);
-}
-
-async function loadProfile(id) {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (!profile) {
-    document.getElementById('profile-container').innerHTML = `
-      <div class="empty-state"><div class="empty-icon">😕</div><h3>Profile not found</h3></div>
-    `;
+  const targetId = pid || user.id;
+  const {data:p} = await supabase.from('profiles').select('*').eq('id',targetId).single();
+  viewProfile = p;
+  if (!p) {
+    document.getElementById('profile-header').innerHTML = '<div class="empty-state"><h3>User not found</h3></div>';
     return;
   }
 
-  viewedProfile = profile;
-  document.title = `VEtmle — ${profile.full_name}`;
-  document.getElementById('topbar-name').textContent = profile.full_name;
+  renderProfileHeader(p);
+  document.getElementById('profile-tabs-bar').style.display = 'block';
 
-  // Get counts
-  const [friendsRes, postsRes] = await Promise.all([
-    supabase.from('friendships').select('id', { count: 'exact' })
-      .or(`requester_id.eq.${id},addressee_id.eq.${id}`).eq('status', 'accepted'),
-    supabase.from('posts').select('id', { count: 'exact' }).eq('author_id', id)
-  ]);
-
-  const friendsCount = friendsRes.count || 0;
-  const postsCount = postsRes.count || 0;
-
-  // Check friendship
-  if (id !== currentUser.id) {
-    const { data: fs } = await supabase
-      .from('friendships')
-      .select('*')
-      .or(`and(requester_id.eq.${currentUser.id},addressee_id.eq.${id}),and(requester_id.eq.${id},addressee_id.eq.${currentUser.id})`)
-      .single();
-    friendshipStatus = fs;
+  if (targetId === user.id) {
+    document.getElementById('wall-compose').style.display = 'block';
+    document.getElementById('wall-avatar').src = avatarUrl(myProfile?.avatar_url);
   }
-
-  const isOwnProfile = id === currentUser.id;
-  const isFriend = friendshipStatus?.status === 'accepted';
-  const isPending = friendshipStatus?.status === 'pending';
-  const isRequester = friendshipStatus?.requester_id === currentUser.id;
-
-  let actionButtons = '';
-  if (isOwnProfile) {
-    actionButtons = `
-      <button class="btn btn-ghost" onclick="openEditProfile()">✏️ Edit Profile</button>
-      <button class="btn btn-ghost" onclick="openAvatarUpload()">🖼️ Change Photo</button>
-    `;
-  } else {
-    if (isFriend) {
-      actionButtons = `
-        <button class="btn btn-primary" onclick="openMessage('${id}')">✉️ Message</button>
-        <button class="btn btn-ghost" onclick="removeFriend('${friendshipStatus.id}')">👤 Friends</button>
-      `;
-    } else if (isPending && isRequester) {
-      actionButtons = `
-        <button class="btn btn-ghost" onclick="cancelRequest('${friendshipStatus.id}')">⏳ Request Sent</button>
-      `;
-    } else if (isPending && !isRequester) {
-      actionButtons = `
-        <button class="btn btn-green" onclick="acceptRequest('${friendshipStatus.id}')">✅ Accept Request</button>
-        <button class="btn btn-ghost" onclick="declineRequest('${friendshipStatus.id}')">❌ Decline</button>
-      `;
-    } else {
-      actionButtons = `
-        <button class="btn btn-primary" onclick="sendFriendRequest('${id}')">➕ Add Friend</button>
-        <button class="btn btn-ghost" onclick="openMessage('${id}')">✉️ Message</button>
-      `;
-    }
-  }
-
-  const coverBg = coverUrl(profile.cover_url)
-    ? `background-image:url('${coverUrl(profile.cover_url)}');background-size:cover;background-position:center`
-    : 'background:linear-gradient(135deg,#1a2040,#0e1428)';
-
-  document.getElementById('profile-container').innerHTML = `
-    <div class="profile-header-card">
-      <div class="profile-cover-wrap">
-        <div class="cover-img-inner" style="${coverBg}"></div>
-        ${isOwnProfile ? `<button onclick="openCoverUpload()" class="btn btn-ghost btn-sm" style="position:absolute;bottom:12px;right:12px;z-index:5">🖼️ Edit Cover</button>` : ''}
-        <div class="profile-avatar-wrap">
-          <div class="profile-avatar-border">
-            <img src="${avatarUrl(profile.avatar_url)}" alt="" id="profile-main-avatar">
-          </div>
-        </div>
-      </div>
-
-      <div class="profile-header-info">
-        <div>
-          <div class="profile-name">${profile.full_name}</div>
-          <div class="profile-username">@${profile.username}</div>
-          ${profile.bio ? `<div class="profile-bio">${profile.bio}</div>` : ''}
-          <div class="profile-stats">
-            <div class="profile-stat" onclick="showTab('friends')">
-              <div class="num">${friendsCount}</div>
-              <div class="label">Friends</div>
-            </div>
-            <div class="profile-stat">
-              <div class="num">${postsCount}</div>
-              <div class="label">Posts</div>
-            </div>
-            ${profile.city ? `<div class="profile-stat"><div class="num" style="font-size:13px">📍</div><div class="label">${profile.city}</div></div>` : ''}
-          </div>
-        </div>
-        <div class="profile-actions">
-          ${actionButtons}
-        </div>
-      </div>
-
-      <div class="profile-tabs" id="profile-tabs">
-        <a class="profile-tab active" data-tab="wall" onclick="showTab('wall')">Wall</a>
-        <a class="profile-tab" data-tab="friends" onclick="showTab('friends')">Friends</a>
-        <a class="profile-tab" data-tab="photos" onclick="showTab('photos')">Photos</a>
-        <a class="profile-tab" data-tab="info" onclick="showTab('info')">Info</a>
-      </div>
-    </div>
-
-    <div id="tab-content"></div>
-  `;
-
-  showTab('wall');
+  loadWall();
 }
 
-window.showTab = async function(tab) {
-  activeTab = tab;
-  document.querySelectorAll('.profile-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === tab);
-  });
+// ── Profile header ─────────────────────────────────────────────
+function renderProfileHeader(p) {
+  const isMe = p.id === user.id;
+  const avt  = avatarUrl(p.avatar_url);
+  const cov  = p.cover_url || '';
 
-  const content = document.getElementById('tab-content');
-  content.innerHTML = '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
+  let actionBtns = isMe
+    ? `<button class="btn btn-secondary btn-sm" onclick="openEditProfile()">Edit Profile</button>`
+    : `<button class="btn btn-primary btn-sm" id="friend-btn" onclick="friendAction('${p.id}')">Add Friend</button>
+       <button class="btn btn-secondary btn-sm" onclick="location.href='../pages/messages.html?user=${p.id}'">Message</button>`;
 
-  const id = profileId || currentUser.id;
-
-  if (tab === 'wall') await loadWall(id, content);
-  else if (tab === 'friends') await loadFriends(id, content);
-  else if (tab === 'photos') await loadPhotos(id, content);
-  else if (tab === 'info') loadInfo(content);
-};
-
-async function loadWall(id, content) {
-  const isOwnProfile = id === currentUser.id;
-
-  let wallHTML = '';
-
-  // Wall post compose (for own profile or friends)
-  const canPost = isOwnProfile || friendshipStatus?.status === 'accepted';
-  if (canPost) {
-    wallHTML += `
-      <div class="post-compose card" style="margin-bottom:14px">
-        <div class="compose-row">
-          <img class="avatar avatar-md" src="${avatarUrl(currentProfile?.avatar_url)}" alt="">
-          <textarea class="compose-input" id="wall-compose" placeholder="Write on ${isOwnProfile ? 'your' : viewedProfile.full_name + "'s"} wall..." rows="2"></textarea>
-        </div>
-        <div style="margin-top:10px;display:flex;justify-content:flex-end">
-          <button class="btn btn-primary btn-sm" onclick="submitWallPost('${id}')">Post</button>
+  document.getElementById('profile-header').innerHTML = `
+    <div class="prof-cover">
+      ${cov ? `<img src="${cov}" alt="" onerror="this.style.display='none'">` : ''}
+      <div class="prof-avatar-wrap">
+        <img class="prof-avatar" src="${avt}" alt=""
+          onerror="this.src='../assets/default-avatar.svg'">
+      </div>
+    </div>
+    <div class="prof-info">
+      <div>
+        <div class="prof-name">${esc(p.full_name||'User')}</div>
+        ${p.username ? `<div class="prof-username">@${esc(p.username)}</div>` : ''}
+        ${p.bio      ? `<div class="prof-bio">${esc(p.bio)}</div>` : ''}
+        <div class="prof-stats">
+          <div class="prof-stat">
+            <div class="prof-stat-n" id="stat-posts">—</div>
+            <div class="prof-stat-l">Posts</div>
+          </div>
+          <div class="prof-stat" onclick="showTab('friends',document.querySelectorAll('.profile-tab')[2])">
+            <div class="prof-stat-n" id="stat-friends">—</div>
+            <div class="prof-stat-l">Friends</div>
+          </div>
         </div>
       </div>
-    `;
+      <div class="prof-actions">${actionBtns}</div>
+    </div>`;
+
+  // Load post + friend counts
+  Promise.all([
+    supabase.from('posts').select('id',{count:'exact',head:true}).eq('author_id',p.id),
+    supabase.from('friendships').select('id',{count:'exact',head:true})
+      .or('requester_id.eq.'+p.id+',addressee_id.eq.'+p.id).eq('status','accepted'),
+  ]).then(([posts,friends]) => {
+    const sp = document.getElementById('stat-posts');
+    const sf = document.getElementById('stat-friends');
+    if (sp) sp.textContent = posts.count  ?? 0;
+    if (sf) sf.textContent = friends.count ?? 0;
+  });
+
+  if (!isMe) checkFriendStatus(p.id);
+}
+
+async function checkFriendStatus(targetId) {
+  const {data} = await supabase.from('friendships')
+    .select('id,status,requester_id')
+    .or(`and(requester_id.eq.${user.id},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${user.id})`)
+    .maybeSingle();
+  const btn = document.getElementById('friend-btn'); if (!btn) return;
+  if (!data)                                              { btn.textContent='Add Friend';      btn.className='btn btn-primary btn-sm'; }
+  else if (data.status==='accepted')                      { btn.textContent='✓ Friends';       btn.className='btn btn-secondary btn-sm'; }
+  else if (data.status==='pending'&&data.requester_id===user.id) { btn.textContent='Pending…'; btn.className='btn btn-secondary btn-sm'; }
+  else                                                    { btn.textContent='Accept Request';  btn.className='btn btn-primary btn-sm'; }
+}
+
+window.friendAction = async function(targetId) {
+  const {data} = await supabase.from('friendships')
+    .select('id,status,requester_id')
+    .or(`and(requester_id.eq.${user.id},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${user.id})`)
+    .maybeSingle();
+  if (!data) {
+    await supabase.from('friendships').insert({requester_id:user.id,addressee_id:targetId,status:'pending'});
+    toast('Friend request sent!','success');
+  } else if (data.status==='pending' && data.requester_id!==user.id) {
+    await supabase.from('friendships').update({status:'accepted'}).eq('id',data.id);
+    toast('Friend added!','success');
+  } else if (data.status==='accepted') {
+    if (!confirm('Remove friend?')) return;
+    await supabase.from('friendships').delete().eq('id',data.id);
+    toast('Removed friend','info');
   }
+  checkFriendStatus(targetId);
+};
 
-  const { data: posts } = await supabase
-    .from('posts')
-    .select('*, author:profiles!author_id(id, full_name, username, avatar_url), wall_owner:profiles!wall_owner_id(id, full_name)')
-    .eq('wall_owner_id', id)
-    .order('created_at', { ascending: false })
-    .limit(20);
+// ── Wall ───────────────────────────────────────────────────────
+async function loadWall() {
+  const targetId = pid || user.id;
+  const {data:posts} = await supabase.from('posts')
+    .select('*, author:profiles!author_id(id,full_name,username,avatar_url)')
+    .eq('wall_owner_id',targetId).order('created_at',{ascending:false}).limit(20);
 
-  // Get likes
   if (posts?.length) {
-    const { data: userLikes } = await supabase
-      .from('likes').select('post_id').eq('user_id', currentUser.id)
-      .in('post_id', posts.map(p => p.id));
-    const likedSet = new Set((userLikes || []).map(l => l.post_id));
-    posts.forEach(p => p.user_liked = likedSet.has(p.id));
+    const {data:lks} = await supabase.from('likes').select('post_id').eq('user_id',user.id).in('post_id',posts.map(p=>p.id));
+    const liked = new Set((lks||[]).map(l=>l.post_id));
+    posts.forEach(p=>p.user_liked=liked.has(p.id));
   }
 
-  wallHTML += (posts || []).map(p => renderPost(p, currentUser.id)).join('');
-  if (!posts?.length) {
-    wallHTML += '<div class="empty-state"><div class="empty-icon">📝</div><h3>No posts yet</h3></div>';
-  }
-
-  content.innerHTML = wallHTML;
+  const feed = document.getElementById('wall-feed');
+  if (!posts?.length) { feed.innerHTML='<div class="empty-state"><h3>No posts yet</h3></div>'; return; }
+  feed.innerHTML = posts.map(p=>renderPost(p,user.id)).join('');
 }
 
-async function loadFriends(id, content) {
-  const { data: friendships } = await supabase
-    .from('friendships')
-    .select('requester_id, addressee_id, requester:profiles!requester_id(id, full_name, avatar_url), addressee:profiles!addressee_id(id, full_name, avatar_url)')
-    .or(`requester_id.eq.${id},addressee_id.eq.${id}`)
-    .eq('status', 'accepted');
+window.postOnWall = async function() {
+  const txt = document.getElementById('wall-text').value.trim();
+  if (!txt) return;
+  const targetId = pid||user.id;
+  const {data:post,error} = await supabase.from('posts').insert({
+    author_id:user.id, wall_owner_id:targetId, content:txt,
+  }).select('*, author:profiles!author_id(id,full_name,username,avatar_url)').single();
+  if (error) { toast('Post failed','error'); return; }
+  document.getElementById('wall-text').value = '';
+  document.getElementById('wall-footer').style.display='none';
+  post.user_liked=false;
+  document.getElementById('wall-feed').insertAdjacentHTML('afterbegin',renderPost(post,user.id));
+  toast('Posted!','success');
+};
 
-  const friends = (friendships || []).map(f =>
-    f.requester_id === id ? f.addressee : f.requester
-  ).filter(Boolean);
+// ── Tabs ───────────────────────────────────────────────────────
+window.showTab = function(tab, btn) {
+  ['posts','photos','friends','info'].forEach(t =>
+    document.getElementById('tab-'+t).style.display = t===tab ? 'block' : 'none'
+  );
+  document.querySelectorAll('.profile-tab').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (tab==='photos')  loadPhotos();
+  if (tab==='friends') loadFriends();
+  if (tab==='info')    loadInfo();
+};
 
-  content.innerHTML = `
-    <div class="card" style="padding:16px">
-      <div class="panel-title">Friends (${friends.length})</div>
-      ${friends.length ? `
-        <div class="friends-grid">
-          ${friends.map(f => `
-            <div class="friend-card" onclick="window.location.href='../pages/profile.html?id=${f.id}'">
-              <img class="avatar avatar-lg" src="${avatarUrl(f.avatar_url)}" alt="">
-              <div class="name">${f.full_name}</div>
-            </div>
-          `).join('')}
-        </div>
-      ` : '<div class="empty-state"><div class="empty-icon">👥</div><h3>No friends yet</h3></div>'}
-    </div>
-  `;
+async function loadPhotos() {
+  const targetId = pid||user.id;
+  const {data:posts} = await supabase.from('posts')
+    .select('id,image_url').eq('author_id',targetId)
+    .not('image_url','is',null).order('created_at',{ascending:false}).limit(60);
+  const grid = document.getElementById('photos-grid');
+  if (!posts?.length) { grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><h3>No photos yet</h3></div>'; return; }
+  grid.innerHTML = posts.map(p=>
+    `<img src="${p.image_url}" loading="lazy"
+       style="width:100%;aspect-ratio:1;object-fit:cover;cursor:zoom-in;border-radius:3px"
+       onclick="openImageViewer('${p.image_url}')"
+       onerror="this.style.display='none'">`
+  ).join('');
 }
 
-async function loadPhotos(id, content) {
-  const { data: posts } = await supabase
-    .from('posts')
-    .select('id, image_url')
-    .eq('author_id', id)
-    .not('image_url', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(30);
-
-  content.innerHTML = `
-    <div class="card" style="padding:16px">
-      <div class="panel-title">Photos (${posts?.length || 0})</div>
-      ${posts?.length ? `
-        <div class="photo-grid">
-          ${posts.map(p => `<img src="${p.image_url}" alt="" onclick="openImageViewer('${p.image_url}')">`).join('')}
-        </div>
-      ` : '<div class="empty-state"><div class="empty-icon">🖼️</div><h3>No photos yet</h3></div>'}
-    </div>
-  `;
+async function loadFriends() {
+  const targetId = pid||user.id;
+  const {data:fs} = await supabase.from('friendships')
+    .select('requester_id,addressee_id')
+    .or('requester_id.eq.'+targetId+',addressee_id.eq.'+targetId)
+    .eq('status','accepted');
+  const ids = (fs||[]).map(f=>f.requester_id===targetId ? f.addressee_id : f.requester_id);
+  const grid = document.getElementById('friends-grid');
+  if (!ids.length) { grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><h3>No friends yet</h3></div>'; return; }
+  const {data:pp} = await supabase.from('profiles').select('id,full_name,avatar_url').in('id',ids).limit(50);
+  grid.innerHTML = (pp||[]).map(p=>`
+    <div class="friend-card" onclick="location.href='../pages/profile.html?id=${p.id}'">
+      <img src="${avatarUrl(p.avatar_url)}" alt="" onerror="this.src='../assets/default-avatar.svg'">
+      <div class="friend-card-name">${esc(p.full_name)}</div>
+    </div>`).join('');
 }
 
-function loadInfo(content) {
-  const p = viewedProfile;
-  content.innerHTML = `
-    <div class="card" style="padding:24px">
-      <div class="panel-title">Personal Info</div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        ${p.full_name ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">👤</span><div><div style="font-size:12px;color:var(--text3)">Name</div><div style="font-weight:600">${p.full_name}</div></div></div>` : ''}
-        ${p.username ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">🔗</span><div><div style="font-size:12px;color:var(--text3)">Username</div><div style="font-weight:600">@${p.username}</div></div></div>` : ''}
-        ${p.city ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">📍</span><div><div style="font-size:12px;color:var(--text3)">City</div><div style="font-weight:600">${p.city}</div></div></div>` : ''}
-        ${p.birthday ? `<div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">🎂</span><div><div style="font-size:12px;color:var(--text3)">Birthday</div><div style="font-weight:600">${new Date(p.birthday).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div></div></div>` : ''}
-        ${p.bio ? `<div style="display:flex;gap:10px;align-items:flex-start"><span style="font-size:18px">💬</span><div><div style="font-size:12px;color:var(--text3)">About</div><div>${p.bio}</div></div></div>` : ''}
-        <div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">📅</span><div><div style="font-size:12px;color:var(--text3)">Joined</div><div style="font-weight:600">${new Date(p.created_at).toLocaleDateString('en-US',{year:'numeric',month:'long'})}</div></div></div>
-      </div>
-    </div>
-  `;
+function loadInfo() {
+  const p = viewProfile;
+  const rows = [
+    p.bio       && ['Bio',      esc(p.bio)],
+    p.city      && ['City',     esc(p.city)],
+    p.website   && ['Website',  `<a href="${p.website}" target="_blank" rel="noopener">${esc(p.website)}</a>`],
+    p.birthdate && ['Birthday', new Date(p.birthdate).toLocaleDateString('en-US',{day:'numeric',month:'long',year:'numeric'})],
+  ].filter(Boolean);
+  const sec = document.getElementById('info-section');
+  if (!rows.length) { sec.innerHTML='<div class="empty-state"><h3>No info added</h3></div>'; return; }
+  sec.innerHTML = rows.map(([k,v])=>`
+    <div class="settings-row">
+      <div class="settings-row-label"><span>${k}</span></div>
+      <div style="font-size:13.5px">${v}</div>
+    </div>`).join('');
 }
 
-// ── Friend actions ──
-window.sendFriendRequest = async function(id) {
-  const { error } = await supabase.from('friendships').insert({
-    requester_id: currentUser.id,
-    addressee_id: id,
-    status: 'pending'
-  });
-  if (error) { toast('Failed to send request', 'error'); return; }
-  await supabase.from('notifications').insert({
-    user_id: id,
-    actor_id: currentUser.id,
-    type: 'friend_request'
-  });
-  toast('Friend request sent!', 'success');
-  loadProfile(id);
-};
-
-window.cancelRequest = async function(id) {
-  await supabase.from('friendships').delete().eq('id', id);
-  toast('Request cancelled', 'info');
-  loadProfile(profileId || currentUser.id);
-};
-
-window.acceptRequest = async function(id) {
-  await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
-  await supabase.from('notifications').insert({
-    user_id: friendshipStatus.requester_id,
-    actor_id: currentUser.id,
-    type: 'friend_accept'
-  });
-  toast('Friend request accepted!', 'success');
-  loadProfile(profileId || currentUser.id);
-};
-
-window.declineRequest = async function(id) {
-  await supabase.from('friendships').delete().eq('id', id);
-  toast('Request declined', 'info');
-  loadProfile(profileId || currentUser.id);
-};
-
-window.removeFriend = async function(id) {
-  if (!confirm('Remove this friend?')) return;
-  await supabase.from('friendships').delete().eq('id', id);
-  toast('Removed from friends', 'info');
-  loadProfile(profileId || currentUser.id);
-};
-
-window.openMessage = function(id) {
-  window.location.href = `../pages/messages.html?user=${id}`;
-};
-
-window.submitWallPost = async function(wallOwnerId) {
-  const content = document.getElementById('wall-compose').value.trim();
-  if (!content) return;
-  const { data: post, error } = await supabase.from('posts').insert({
-    author_id: currentUser.id,
-    wall_owner_id: wallOwnerId,
-    content,
-  }).select('*, author:profiles!author_id(id, full_name, username, avatar_url), wall_owner:profiles!wall_owner_id(id, full_name)').single();
-  if (error) { toast('Failed to post', 'error'); return; }
-  if (wallOwnerId !== currentUser.id) {
-    await supabase.from('notifications').insert({
-      user_id: wallOwnerId,
-      actor_id: currentUser.id,
-      type: 'wall_post',
-      entity_id: post.id
-    });
-  }
-  post.user_liked = false;
-  const wallCompose = document.querySelector('.post-compose.card');
-  wallCompose.insertAdjacentHTML('afterend', renderPost(post, currentUser.id));
-  document.getElementById('wall-compose').value = '';
-  toast('Posted!', 'success');
-};
-
-// ── Edit Profile ──
+// ── Edit profile ───────────────────────────────────────────────
 window.openEditProfile = function() {
-  const p = viewedProfile;
-  const overlay = createModal('Edit Profile', `
-    <div class="form-group"><label>Full Name</label><input id="edit-name" value="${p.full_name || ''}"></div>
-    <div class="form-group"><label>Username</label><input id="edit-username" value="${p.username || ''}"></div>
-    <div class="form-group"><label>Bio</label><textarea id="edit-bio">${p.bio || ''}</textarea></div>
-    <div class="form-group"><label>City</label><input id="edit-city" value="${p.city || ''}"></div>
-    <div class="form-group"><label>Birthday</label><input type="date" id="edit-birthday" value="${p.birthday || ''}"></div>
-  `, `
-    <button class="btn btn-ghost" onclick="document.querySelector('.modal-overlay').remove()">Cancel</button>
-    <button class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
-  `);
+  const p = myProfile;
+  createModal('Edit Profile',
+    `<div class="form-group"><label>Full Name</label><input id="ep-name" value="${esc(p.full_name||'')}"></div>
+     <div class="form-group"><label>Bio</label><textarea id="ep-bio" rows="3">${esc(p.bio||'')}</textarea></div>
+     <div class="form-group"><label>City</label><input id="ep-city" value="${esc(p.city||'')}"></div>
+     <div class="form-group"><label>Website</label><input id="ep-site" value="${esc(p.website||'')}"></div>
+     <div class="form-group"><label>Avatar photo</label><input type="file" id="ep-avt" accept="image/*"></div>
+     <div class="form-group"><label>Cover photo</label><input type="file" id="ep-cov" accept="image/*"></div>`,
+    `<button class="btn btn-secondary btn-sm" onclick="document.querySelector('.modal-overlay').remove()">Cancel</button>
+     <button class="btn btn-primary btn-sm" id="ep-save" onclick="saveProfile()">Save</button>`
+  );
 };
 
 window.saveProfile = async function() {
+  const btn = document.getElementById('ep-save');
+  btn.disabled=true; btn.textContent='Saving…';
   const updates = {
-    full_name: document.getElementById('edit-name').value.trim(),
-    username: document.getElementById('edit-username').value.trim().toLowerCase(),
-    bio: document.getElementById('edit-bio').value.trim(),
-    city: document.getElementById('edit-city').value.trim(),
-    birthday: document.getElementById('edit-birthday').value || null,
+    full_name: document.getElementById('ep-name').value.trim(),
+    bio:       document.getElementById('ep-bio').value.trim()  || null,
+    city:      document.getElementById('ep-city').value.trim() || null,
+    website:   document.getElementById('ep-site').value.trim() || null,
   };
-  const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
-  if (error) { toast('Failed to save: ' + error.message, 'error'); return; }
-  document.querySelector('.modal-overlay')?.remove();
-  toast('Profile updated!', 'success');
-  loadProfile(currentUser.id);
-};
-
-window.openAvatarUpload = function() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    toast('Uploading...', 'info');
-    try {
-      const { uploadImage } = await import('../js/app.js');
-      const path = await uploadImage(supabase, 'avatars', file);
-      await supabase.from('profiles').update({ avatar_url: path }).eq('id', currentUser.id);
-      toast('Avatar updated!', 'success');
-      loadProfile(currentUser.id);
-    } catch (e) {
-      toast('Upload failed', 'error');
-    }
-  };
-  input.click();
-};
-
-window.openCoverUpload = function() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    toast('Uploading...', 'info');
-    try {
-      const { uploadImage } = await import('../js/app.js');
-      const path = await uploadImage(supabase, 'covers', file);
-      await supabase.from('profiles').update({ cover_url: path }).eq('id', currentUser.id);
-      toast('Cover updated!', 'success');
-      loadProfile(currentUser.id);
-    } catch (e) {
-      toast('Upload failed', 'error');
-    }
-  };
-  input.click();
-};
-
-window.openImageViewer = function(url) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
-  overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px">`;
-  overlay.onclick = () => overlay.remove();
-  document.body.appendChild(overlay);
-};
-
-window.handleLike = async function(btn, postId) {
-  const isLiked = btn.classList.contains('liked');
-  const countEl = btn.querySelector('.count');
-  if (isLiked) {
-    btn.classList.remove('liked');
-    btn.innerHTML = `🤍 <span class="count">${Math.max(0, parseInt(countEl.textContent) - 1)}</span>`;
-    await supabase.from('likes').delete().match({ user_id: currentUser.id, post_id: postId });
-  } else {
-    btn.classList.add('liked');
-    btn.innerHTML = `❤️ <span class="count">${parseInt(countEl.textContent) + 1}</span>`;
-    await supabase.from('likes').insert({ user_id: currentUser.id, post_id: postId });
+  const avtFile = document.getElementById('ep-avt').files[0];
+  const covFile = document.getElementById('ep-cov').files[0];
+  if (avtFile) {
+    const ext=avtFile.name.split('.').pop(), path=user.id+'.'+ext;
+    await supabase.storage.from('avatars').upload(path,avtFile,{upsert:true,cacheControl:'3600'});
+    updates.avatar_url = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
   }
+  if (covFile) {
+    const ext=covFile.name.split('.').pop(), path='cover-'+user.id+'.'+ext;
+    await supabase.storage.from('covers').upload(path,covFile,{upsert:true,cacheControl:'3600'});
+    updates.cover_url = supabase.storage.from('covers').getPublicUrl(path).data.publicUrl;
+  }
+  const {error} = await supabase.from('profiles').update(updates).eq('id',user.id);
+  if (error) { toast('Save failed: '+error.message,'error'); btn.disabled=false; btn.textContent='Save'; return; }
+  document.querySelector('.modal-overlay')?.remove();
+  toast('Profile updated!','success');
+  location.reload();
 };
 
-window.toggleComments = async function(btn, postId) {
-  const container = document.getElementById(`comments-${postId}`);
-  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
-  container.style.display = 'block';
-  container.innerHTML = '<div class="comments-section"><div style="color:var(--text3);font-size:13px">Loading...</div></div>';
-  const { data: comments } = await supabase.from('comments')
-    .select('*, author:profiles!author_id(id, full_name, avatar_url)')
-    .eq('post_id', postId).order('created_at', { ascending: true });
-  container.innerHTML = `
-    <div class="comments-section">
-      ${(comments || []).map(c => `
-        <div class="comment">
-          <img class="avatar avatar-sm" src="${avatarUrl(c.author?.avatar_url)}" alt="">
-          <div class="comment-body">
-            <div class="comment-author"><a href="../pages/profile.html?id=${c.author_id}">${c.author?.full_name || 'User'}</a></div>
-            <div class="comment-text">${c.content}</div>
-            <div class="comment-meta">${timeAgo(c.created_at)}</div>
-          </div>
+// ── Post actions (required by renderPost) ─────────────────────
+window.handleLike = async function(btn,postId){
+  const liked=btn.classList.contains('liked');
+  const cnt=btn.querySelector('.count'); const n=parseInt(cnt.textContent)||0;
+  const svgFill='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+  const svgOut ='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  if (liked) { btn.classList.remove('liked'); cnt.textContent=Math.max(0,n-1); btn.innerHTML=svgOut+'<span class="count">'+Math.max(0,n-1)+'</span>'; await supabase.from('likes').delete().match({user_id:user.id,post_id:postId}); }
+  else       { btn.classList.add('liked');    cnt.textContent=n+1;             btn.innerHTML=svgFill+'<span class="count">'+(n+1)+'</span>';            await supabase.from('likes').insert({user_id:user.id,post_id:postId}); }
+};
+
+window.toggleComments = async function(btn,postId){
+  const box=document.getElementById('comments-'+postId); if(!box) return;
+  if(box.style.display!=='none'){box.style.display='none';return;}
+  box.style.display='block';
+  const {data:cs}=await supabase.from('comments').select('*,author:profiles!author_id(id,full_name,avatar_url)').eq('post_id',postId).order('created_at',{ascending:true});
+  const myAvt=avatarUrl(myProfile?.avatar_url);
+  box.innerHTML=`<div class="comments-section">
+    ${(cs||[]).map(c=>`
+      <div class="comment">
+        <img src="${avatarUrl(c.author?.avatar_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.src='../assets/default-avatar.svg'">
+        <div class="comment-body">
+          <div class="comment-author"><a href="../pages/profile.html?id=${c.author_id}">${esc(c.author?.full_name||'User')}</a></div>
+          <div class="comment-text">${esc(c.content)}</div>
+          <div class="comment-meta">${timeAgo(c.created_at)}</div>
         </div>
-      `).join('') || '<p style="color:var(--text3);font-size:13px;padding:8px 0">No comments yet</p>'}
-      <div class="comment-input-row">
-        <img class="avatar avatar-sm" src="${avatarUrl(currentProfile?.avatar_url)}" alt="">
-        <input type="text" id="comment-input-${postId}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter')submitComment('${postId}')">
-        <button class="btn btn-primary btn-sm" onclick="submitComment('${postId}')">Send</button>
-      </div>
+      </div>`).join('')||'<p style="color:var(--text3);font-size:12px;padding:4px 0">No comments yet</p>'}
+    <div class="comment-input-row">
+      <img src="${myAvt}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.src='../assets/default-avatar.svg'">
+      <input id="ci-${postId}" type="text" placeholder="Write a comment…" onkeydown="if(event.key==='Enter')submitComment('${postId}')">
+      <button class="btn btn-primary btn-sm" onclick="submitComment('${postId}')">Send</button>
     </div>
-  `;
+  </div>`;
 };
 
-window.submitComment = async function(postId) {
-  const input = document.getElementById(`comment-input-${postId}`);
-  const content = input.value.trim();
-  if (!content) return;
-  const { data: comment } = await supabase.from('comments').insert({
-    post_id: postId, author_id: currentUser.id, content,
-  }).select('*, author:profiles!author_id(id, full_name, avatar_url)').single();
-  input.value = '';
-  const section = document.querySelector(`#comments-${postId} .comments-section`);
-  const inputRow = section.querySelector('.comment-input-row');
-  const el = document.createElement('div');
-  el.className = 'comment';
-  el.innerHTML = `
-    <img class="avatar avatar-sm" src="${avatarUrl(comment.author?.avatar_url)}" alt="">
+window.submitComment = async function(postId){
+  const inp=document.getElementById('ci-'+postId); const txt=inp.value.trim(); if(!txt)return;
+  inp.value=''; inp.disabled=true;
+  const {data:c}=await supabase.from('comments').insert({post_id:postId,author_id:user.id,content:txt}).select('*,author:profiles!author_id(id,full_name,avatar_url)').single();
+  inp.disabled=false; if(!c)return;
+  const section=document.querySelector('#comments-'+postId+' .comments-section');
+  const row=section.querySelector('.comment-input-row');
+  const el=document.createElement('div'); el.className='comment';
+  el.innerHTML=`<img src="${avatarUrl(c.author?.avatar_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.src='../assets/default-avatar.svg'">
     <div class="comment-body">
-      <div class="comment-author"><a href="../pages/profile.html?id=${comment.author_id}">${comment.author?.full_name}</a></div>
-      <div class="comment-text">${comment.content}</div>
+      <div class="comment-author"><a href="../pages/profile.html?id=${c.author_id}">${esc(c.author?.full_name||'User')}</a></div>
+      <div class="comment-text">${esc(c.content)}</div>
       <div class="comment-meta">just now</div>
-    </div>
-  `;
-  section.insertBefore(el, inputRow);
+    </div>`;
+  section.insertBefore(el,row);
 };
 
-window.togglePostMenu = function(btn, postId) {
-  const menu = document.createElement('div');
-  menu.className = 'dropdown-menu';
-  [{ icon: '🗑️', label: 'Delete post', danger: true, action: async () => {
-    if (!confirm('Delete?')) return;
-    await supabase.from('posts').delete().eq('id', postId);
-    document.querySelector(`[data-post-id="${postId}"]`)?.remove();
-    toast('Deleted', 'success');
-  }}].forEach(item => {
-    const el = document.createElement('button');
-    el.className = `dropdown-item${item.danger ? ' danger' : ''}`;
-    el.innerHTML = `${item.icon} ${item.label}`;
-    el.onclick = () => { item.action(); menu.remove(); };
-    menu.appendChild(el);
-  });
-  btn.parentElement.style.position = 'relative';
-  btn.parentElement.appendChild(menu);
-  setTimeout(() => document.addEventListener('click', function c(e) {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', c); }
-  }), 10);
+window.bookmarkPost = async function(postId,btn){
+  const isBm=btn.classList.contains('bookmarked');
+  const svgFill='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+  const svgOut ='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+  if(isBm){ btn.classList.remove('bookmarked'); btn.innerHTML=svgOut;  await supabase.from('bookmarks').delete().match({user_id:user.id,post_id:postId}); toast('Removed','info'); }
+  else    { btn.classList.add('bookmarked');    btn.innerHTML=svgFill; const{error}=await supabase.from('bookmarks').insert({user_id:user.id,post_id:postId}); if(error?.code==='23505'){toast('Already saved','info');return;} toast('Saved!','success'); }
 };
 
-window.sharePost = function(postId) {
-  navigator.clipboard.writeText(`${origin}../pages/post.html?id=${postId}`);
-  toast('Link copied!', 'success');
+window.togglePostMenu = function(btn,postId){
+  document.querySelectorAll('.post-menu-dropdown').forEach(d=>d.remove());
+  const m=document.createElement('div'); m.className='post-menu-dropdown';
+  m.innerHTML=`<button class="dropdown-item" onclick="editPost('${postId}');this.closest('.post-menu-dropdown').remove()">Edit</button>
+               <button class="dropdown-item danger" onclick="deletePost('${postId}');this.closest('.post-menu-dropdown').remove()">Delete</button>`;
+  btn.parentElement.style.position='relative'; btn.parentElement.appendChild(m);
+  setTimeout(()=>document.addEventListener('click',()=>m.remove(),{once:true}),10);
 };
-
-window.toggleSidebar = function() {
-  document.getElementById('sidebar').classList.toggle('open');
+window.deletePost = async function(postId){
+  if(!confirm('Delete this post?'))return;
+  await supabase.from('posts').delete().eq('id',postId);
+  document.querySelector('[data-post-id="'+postId+'"]')?.remove();
+  toast('Deleted','success');
 };
+window.editPost = function(postId){
+  const card=document.querySelector('[data-post-id="'+postId+'"]');
+  const el=card.querySelector('.post-content'); if(!el)return;
+  const old=el.textContent;
+  const ta=document.createElement('textarea'); ta.className='compose-input'; ta.value=old; ta.style.cssText='margin:8px 13px;width:calc(100% - 26px)';
+  el.replaceWith(ta); ta.focus();
+  const foot=document.createElement('div'); foot.style.cssText='padding:0 13px 10px;display:flex;gap:8px;justify-content:flex-end';
+  foot.innerHTML=`<button class="btn btn-secondary btn-sm" onclick="cancelEdit('${postId}')">Cancel</button><button class="btn btn-primary btn-sm" onclick="saveEdit('${postId}')">Save</button>`;
+  ta.insertAdjacentElement('afterend',foot); card._ta=ta; card._foot=foot; card._old=old;
+};
+window.cancelEdit = function(postId){const card=document.querySelector('[data-post-id="'+postId+'"]');const div=document.createElement('div');div.className='post-content';div.textContent=card._old;card._ta.replaceWith(div);card._foot.remove();};
+window.saveEdit   = async function(postId){const card=document.querySelector('[data-post-id="'+postId+'"]');const txt=card._ta.value.trim();if(!txt)return;await supabase.from('posts').update({content:txt}).eq('id',postId);const div=document.createElement('div');div.className='post-content';div.textContent=txt;card._ta.replaceWith(div);card._foot.remove();toast('Updated','success');};
+window.sharePost  = function(postId){navigator.clipboard.writeText(location.origin+'/pages/profile.html?post='+postId);toast('Link copied!','success');};
 
+window.toggleSidebar = ()=>document.getElementById('sidebar').classList.toggle('open');
 init();
 </script>
 </body>

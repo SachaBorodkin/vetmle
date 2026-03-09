@@ -1,335 +1,151 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VEtmle — Search</title>
-    <link rel="stylesheet" href="../css/main.css" />
-    <link rel="stylesheet" href="../css/layout.css" />
-    <link rel="stylesheet" href="../css/components.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar"></aside>
-      <main class="main-content">
-        <div class="topbar">
-          <button
-            onclick="toggleSidebar()"
-            style="
-              background: none;
-              border: none;
-              color: var(--text);
-              font-size: 22px;
-            "
-          >
-            ☰
-          </button>
-          <span style="font-weight: 700">Search</span>
-        </div>
-
-        <div class="page-container wide">
-          <div class="page-title">🔍 Search</div>
-
-          <div
-            class="search-bar card"
-            style="margin-bottom: 16px; padding: 0 18px"
-          >
-            <span class="search-icon">🔍</span>
-            <input
-              type="text"
-              id="main-search"
-              placeholder="Search people, groups, posts..."
-              style="
-                background: transparent;
-                border: none;
-                box-shadow: none;
-                padding: 14px 0;
-                font-size: 16px;
-              "
-              autofocus
-              oninput="handleSearch(this.value)"
-            />
-            <span id="search-spinner" style="display: none"
-              ><div class="spinner" style="width: 18px; height: 18px"></div
-            ></span>
-          </div>
-
-          <div
-            style="
-              display: flex;
-              gap: 4px;
-              margin-bottom: 16px;
-              flex-wrap: wrap;
-            "
-            id="filter-tabs"
-            style="display: none"
-          >
-            <button
-              class="btn btn-primary btn-sm"
-              id="filter-people"
-              onclick="setSearchFilter('people')"
-            >
-              👤 People
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              id="filter-groups"
-              onclick="setSearchFilter('groups')"
-            >
-              🏛️ Groups
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              id="filter-posts"
-              onclick="setSearchFilter('posts')"
-            >
-              📝 Posts
-            </button>
-          </div>
-
-          <div id="search-results">
-            <div class="empty-state" style="padding: 60px">
-              <div class="empty-icon">🔍</div>
-              <h3>Search for anything</h3>
-              <p>Find people, groups, and posts</p>
-            </div>
-          </div>
-        </div>
-      </main>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEtmle — Search</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+<header class="vk-header" id="vk-header"></header>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:20px">&#9776;</button>
+      <span style="font-weight:500">Search</span>
     </div>
-    <div id="toast-container"></div>
-
-    <script type="module">
-      import {
-        supabase,
-        requireAuth,
-        getCurrentProfile,
-        avatarUrl,
-        timeAgo,
-      } from "../js/supabase.js";
-      import { toast, renderSidebar } from "../js/app.js";
-
-      let currentUser = null;
-      let searchTimeout = null;
-      let currentFilter = "people";
-      let lastQuery = "";
-      let myFriendIds = new Set();
-
-      async function init() {
-        currentUser = await requireAuth();
-        if (!currentUser) return;
-        const profile = await getCurrentProfile();
-        document.getElementById("sidebar").innerHTML = renderSidebar(
-          profile,
-          "search",
-        );
-
-        // Pre-load friend IDs
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select("requester_id, addressee_id")
-          .or(
-            `requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`,
-          )
-          .eq("status", "accepted");
-
-        (friendships || []).forEach((f) => {
-          myFriendIds.add(
-            f.requester_id === currentUser.id ? f.addressee_id : f.requester_id,
-          );
-        });
-
-        // Auto-search if ?q= param
-        const params = new URLSearchParams(location.search);
-        const q = params.get("q");
-        if (q) {
-          document.getElementById("main-search").value = q;
-          performSearch(q);
-        }
-      }
-
-      window.handleSearch = function (value) {
-        clearTimeout(searchTimeout);
-        if (!value.trim()) {
-          document.getElementById("search-results").innerHTML = `
-      <div class="empty-state" style="padding:60px">
-        <div class="empty-icon">🔍</div><h3>Search for anything</h3><p>Find people, groups, and posts</p>
-      </div>`;
-          return;
-        }
-        document.getElementById("search-spinner").style.display = "block";
-        searchTimeout = setTimeout(() => performSearch(value.trim()), 350);
-      };
-
-      async function performSearch(query) {
-        lastQuery = query;
-        document.getElementById("filter-tabs").style.display = "flex";
-        document.getElementById("search-spinner").style.display = "none";
-        setSearchFilter(currentFilter, query);
-      }
-
-      window.setSearchFilter = async function (filter, query) {
-        currentFilter = filter;
-        query = query || lastQuery;
-        ["people", "groups", "posts"].forEach((f) => {
-          document.getElementById(`filter-${f}`).className =
-            `btn btn-sm ${f === filter ? "btn-primary" : "btn-ghost"}`;
-        });
-
-        const results = document.getElementById("search-results");
-        results.innerHTML =
-          '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
-
-        if (filter === "people") await searchPeople(query, results);
-        else if (filter === "groups") await searchGroups(query, results);
-        else await searchPosts(query, results);
-      };
-
-      async function searchPeople(query, container) {
-        const { data: people } = await supabase
-          .from("profiles")
-          .select("*")
-          .or(`full_name.ilike.%${query}%,username.ilike.%${query}%`)
-          .neq("id", currentUser.id)
-          .limit(20);
-
-        if (!people?.length) {
-          container.innerHTML = `<div class="empty-state"><div class="empty-icon">👤</div><h3>No people found</h3></div>`;
-          return;
-        }
-
-        container.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${people
-        .map((p) => {
-          const isFriend = myFriendIds.has(p.id);
-          return `
-          <div class="card" style="padding:14px;display:flex;align-items:center;gap:12px">
-            <img class="avatar avatar-md" src="${avatarUrl(p.avatar_url)}" style="cursor:pointer"
-                 onclick="window.location.href='../pages/profile.html?id=${p.id}'" alt="">
-            <div style="flex:1">
-              <a href="../pages/profile.html?id=${p.id}" style="font-weight:700;color:var(--text)">${p.full_name}</a>
-              <div style="font-size:12px;color:var(--text3)">@${p.username}${p.city ? ` · 📍 ${p.city}` : ""}</div>
-            </div>
-            <div style="display:flex;gap:6px">
-              ${
-                isFriend
-                  ? `<button class="btn btn-primary btn-sm" onclick="window.location.href='../pages/messages.html?user=${p.id}'">✉️ Message</button>`
-                  : `<button class="btn btn-primary btn-sm" onclick="addFriend('${p.id}', this)">➕ Add Friend</button>`
-              }
-              <button class="btn btn-ghost btn-sm" onclick="window.location.href='../pages/profile.html?id=${p.id}'">View</button>
-            </div>
-          </div>
-        `;
-        })
-        .join("")}
-    </div>
-  `;
-      }
-
-      async function searchGroups(query, container) {
-        const { data: groups } = await supabase
-          .from("groups")
-          .select("*")
-          .ilike("name", `%${query}%`)
-          .limit(20);
-
-        if (!groups?.length) {
-          container.innerHTML = `<div class="empty-state"><div class="empty-icon">🏛️</div><h3>No groups found</h3></div>`;
-          return;
-        }
-
-        container.innerHTML = `
-    <div class="groups-grid">
-      ${groups
-        .map(
-          (g) => `
-        <div class="group-card" onclick="window.location.href='../pages/group.html?id=${g.id}'">
-          <div class="group-cover">
-            <div class="group-avatar-wrap" style="display:flex;align-items:center;justify-content:center;font-size:20px">🏛️</div>
-          </div>
-          <div class="group-body">
-            <div class="group-name">${g.name}</div>
-            <div class="group-desc">${g.description || "No description"}</div>
-            <div style="font-size:12px;color:var(--text3)">👥 ${g.members_count} members</div>
-          </div>
-        </div>
-      `,
-        )
-        .join("")}
-    </div>
-  `;
-      }
-
-      async function searchPosts(query, container) {
-        const { data: posts } = await supabase
-          .from("posts")
-          .select(
-            "*, author:profiles!author_id(id, full_name, username, avatar_url)",
-          )
-          .ilike("content", `%${query}%`)
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (!posts?.length) {
-          container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><h3>No posts found</h3></div>`;
-          return;
-        }
-
-        container.innerHTML = posts
-          .map(
-            (p) => `
-    <div class="post-card" style="margin-bottom:12px">
-      <div class="post-header">
-        <img class="avatar avatar-md" src="${avatarUrl(p.author?.avatar_url)}" style="cursor:pointer"
-             onclick="window.location.href='../pages/profile.html?id=${p.author_id}'" alt="">
-        <div class="post-header-info">
-          <a class="post-author-name" href="../pages/profile.html?id=${p.author_id}">${p.author?.full_name}</a>
-          <div class="post-meta">${timeAgo(p.created_at)}</div>
+    <div class="page-narrow">
+      <div style="margin-bottom:14px">
+        <div class="search-bar" style="height:42px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="q" placeholder="Search people, communities, posts…" style="padding:0 8px;font-size:14px" onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="btn btn-primary btn-sm" onclick="doSearch()">Search</button>
         </div>
       </div>
-      <div class="post-content">${highlight(p.content, query)}</div>
-      ${p.image_url ? `<img class="post-image" src="${p.image_url}" style="max-height:200px">` : ""}
+
+      <div style="display:flex;gap:4px;margin-bottom:14px" id="type-tabs">
+        <button class="tab-btn active" id="t-people"      onclick="setType('people',this)">People</button>
+        <button class="tab-btn"        id="t-communities" onclick="setType('communities',this)">Communities</button>
+        <button class="tab-btn"        id="t-posts"       onclick="setType('posts',this)">Posts</button>
+      </div>
+
+      <div id="results">
+        <div class="empty-state"><h3>Search VEtmle</h3><p>Find people, communities, and posts.</p></div>
+      </div>
     </div>
-  `,
-          )
-          .join("");
-      }
+  </main>
+</div>
+<div id="toast-container"></div>
 
-      function highlight(text, query) {
-        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        return text.replace(
-          new RegExp(escaped, "gi"),
-          (m) =>
-            `<mark style="background:rgba(91,127,255,0.3);color:var(--text);border-radius:2px">${m}</mark>`,
-        );
-      }
+<script type="module">
+import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
+import { toast, renderSidebar, renderHeader, renderPost } from '../js/app.js';
 
-      window.addFriend = async function (userId, btn) {
-        btn.disabled = true;
-        btn.textContent = "Sent ✓";
-        await supabase
-          .from("friendships")
-          .insert({
-            requester_id: currentUser.id,
-            addressee_id: userId,
-            status: "pending",
-          });
-        await supabase
-          .from("notifications")
-          .insert({
-            user_id: userId,
-            actor_id: currentUser.id,
-            type: "friend_request",
-          });
-        toast("Friend request sent!", "success");
-      };
+let user, profile, searchType = 'people';
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 
-      window.toggleSidebar = function () {
-        document.getElementById("sidebar").classList.toggle("open");
-      };
+async function init() {
+  user    = await requireAuth(); if (!user) return;
+  profile = await getCurrentProfile();
+  renderHeader(profile, 'search');
+  document.getElementById('sidebar').innerHTML = renderSidebar(profile, 'search');
 
-      init();
-    </script>
-  </body>
+  // Prefill from URL param
+  const q = new URLSearchParams(location.search).get('q');
+  if (q) { document.getElementById('q').value = q; doSearch(); }
+}
+
+window.setType = function(type, btn) {
+  searchType = type;
+  document.querySelectorAll('#type-tabs .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const q = document.getElementById('q').value.trim();
+  if (q) doSearch();
+};
+
+window.doSearch = async function() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  document.getElementById('results').innerHTML = '<div style="display:flex;justify-content:center;padding:36px"><div class="spinner"></div></div>';
+
+  if (searchType === 'people') {
+    const {data} = await supabase.from('profiles').select('id,full_name,username,avatar_url,bio')
+      .or('full_name.ilike.%'+q+'%,username.ilike.%'+q+'%')
+      .limit(20);
+    renderPeople(data||[]);
+  } else if (searchType === 'communities') {
+    const {data} = await supabase.from('groups').select('id,name,description,avatar_url,members_count')
+      .ilike('name','%'+q+'%').limit(20);
+    renderComms(data||[]);
+  } else {
+    const {data} = await supabase.from('posts')
+      .select('*, author:profiles!author_id(id,full_name,username,avatar_url)')
+      .ilike('content','%'+q+'%').order('created_at',{ascending:false}).limit(20);
+    renderPosts(data||[]);
+  }
+};
+
+function renderPeople(pp) {
+  const r = document.getElementById('results');
+  if (!pp.length) { r.innerHTML='<div class="empty-state"><h3>No people found</h3></div>'; return; }
+  r.innerHTML = '<div class="card" style="overflow:hidden">'
+    + pp.map(p=>`
+    <div class="search-result-item" onclick="location.href='../pages/profile.html?id=${p.id}'">
+      <img src="${avatarUrl(p.avatar_url)}" alt="" onerror="this.src='../assets/default-avatar.svg'">
+      <div style="flex:1;min-width:0">
+        <div class="search-result-name">${esc(p.full_name)}</div>
+        <div class="search-result-meta">${p.username?'@'+esc(p.username)+' · ':''} ${esc(p.bio||'')}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();location.href='../pages/messages.html?user=${p.id}'">Message</button>
+    </div>`).join('')
+    + '</div>';
+}
+
+function renderComms(gs) {
+  const r = document.getElementById('results');
+  if (!gs.length) { r.innerHTML='<div class="empty-state"><h3>No communities found</h3></div>'; return; }
+  r.innerHTML = '<div class="card" style="overflow:hidden">'
+    + gs.map(g=>`
+    <div class="search-result-item" onclick="location.href='../pages/group.html?id=${g.id}'">
+      <img src="${g.avatar_url||'../assets/default-avatar.svg'}" style="border-radius:8px" alt="" onerror="this.src='../assets/default-avatar.svg'">
+      <div style="flex:1;min-width:0">
+        <div class="search-result-name">${esc(g.name)}</div>
+        <div class="search-result-meta">${(g.members_count||0)} members · ${esc(g.description||'')}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();location.href='../pages/group.html?id=${g.id}'">View</button>
+    </div>`).join('')
+    + '</div>';
+}
+
+async function renderPosts(posts) {
+  const r = document.getElementById('results');
+  if (!posts.length) { r.innerHTML='<div class="empty-state"><h3>No posts found</h3></div>'; return; }
+  const {data:lks} = await supabase.from('likes').select('post_id').eq('user_id',user.id).in('post_id',posts.map(p=>p.id));
+  const liked = new Set((lks||[]).map(l=>l.post_id));
+  posts.forEach(p=>p.user_liked=liked.has(p.id));
+  r.innerHTML = posts.map(p=>renderPost(p,user.id)).join('');
+}
+
+// post action stubs so renderPost links work
+window.handleLike = async function(btn,postId){
+  const liked=btn.classList.contains('liked'); const cnt=btn.querySelector('.count'); const n=parseInt(cnt.textContent)||0;
+  if(liked){btn.classList.remove('liked');cnt.textContent=Math.max(0,n-1);await supabase.from('likes').delete().match({user_id:user.id,post_id:postId});}
+  else{btn.classList.add('liked');cnt.textContent=n+1;await supabase.from('likes').insert({user_id:user.id,post_id:postId});}
+};
+window.toggleComments = function(){};
+window.togglePostMenu = function(){};
+window.sharePost = function(id){navigator.clipboard.writeText(location.origin+'/pages/feed.html?post='+id);toast('Link copied!','success');};
+window.bookmarkPost = async function(postId,btn){
+  const isBm=btn.classList.contains('bookmarked');
+  if(isBm){btn.classList.remove('bookmarked');await supabase.from('bookmarks').delete().match({user_id:user.id,post_id:postId});toast('Removed','info');}
+  else{btn.classList.add('bookmarked');await supabase.from('bookmarks').insert({user_id:user.id,post_id:postId});toast('Saved!','success');}
+};
+
+window.toggleSidebar = ()=>document.getElementById('sidebar').classList.toggle('open');
+init();
+</script>
+</body>
 </html>

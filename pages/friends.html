@@ -1,399 +1,232 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VEtmle — Friends</title>
-    <link rel="stylesheet" href="../css/main.css" />
-    <link rel="stylesheet" href="../css/layout.css" />
-    <link rel="stylesheet" href="../css/components.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar"></aside>
-      <main class="main-content">
-        <div class="topbar">
-          <button
-            onclick="toggleSidebar()"
-            style="
-              background: none;
-              border: none;
-              color: var(--text);
-              font-size: 22px;
-            "
-          >
-            ☰
-          </button>
-          <span style="font-weight: 700">Friends</span>
-        </div>
-
-        <div class="page-container wide">
-          <div class="page-title">👥 Friends</div>
-
-          <!-- Tabs -->
-          <div
-            style="
-              display: flex;
-              gap: 4px;
-              margin-bottom: 16px;
-              flex-wrap: wrap;
-            "
-          >
-            <button
-              class="btn btn-primary btn-sm"
-              id="tab-all"
-              onclick="loadTab('all')"
-            >
-              All Friends
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              id="tab-requests"
-              onclick="loadTab('requests')"
-            >
-              Friend Requests
-              <span id="requests-badge" class="badge" style="display: none"
-                >0</span
-              >
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              id="tab-suggestions"
-              onclick="loadTab('suggestions')"
-            >
-              Suggestions
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              id="tab-online"
-              onclick="loadTab('online')"
-            >
-              Online
-            </button>
-          </div>
-
-          <!-- Search -->
-          <div
-            class="search-bar card"
-            style="margin-bottom: 16px; padding: 0 16px"
-          >
-            <span class="search-icon">🔍</span>
-            <input
-              type="text"
-              placeholder="Search friends..."
-              oninput="searchFriends(this.value)"
-              style="
-                background: transparent;
-                border: none;
-                box-shadow: none;
-                padding: 12px 0;
-              "
-            />
-          </div>
-
-          <div id="friends-content">
-            <div style="display: flex; justify-content: center; padding: 40px">
-              <div class="spinner"></div>
-            </div>
-          </div>
-        </div>
-      </main>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEtmle — Friends</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    .friends-layout { display:grid;grid-template-columns:220px 1fr;gap:12px;max-width:960px;margin:0 auto;padding:14px; }
+    @media(max-width:720px){.friends-layout{grid-template-columns:1fr}.friends-side{display:none}}
+    .fr-nav-item { display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;border-radius:var(--r-sm);transition:background var(--t); }
+    .fr-nav-item:hover { background:var(--surface2); }
+    .fr-nav-item.active { background:var(--blue-ll);color:var(--blue); }
+  </style>
+</head>
+<body>
+<header class="vk-header" id="vk-header"></header>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:20px">&#9776;</button>
+      <span style="font-weight:500">Friends</span>
     </div>
-    <div id="toast-container"></div>
-
-    <script type="module">
-      import {
-        supabase,
-        requireAuth,
-        getCurrentProfile,
-        avatarUrl,
-      } from "../js/supabase.js";
-      import { toast, renderSidebar } from "../js/app.js";
-
-      let currentUser = null;
-      let allFriends = [];
-
-      async function init() {
-        currentUser = await requireAuth();
-        if (!currentUser) return;
-        const profile = await getCurrentProfile();
-        document.getElementById("sidebar").innerHTML = renderSidebar(
-          profile,
-          "friends",
-        );
-
-        await checkRequests();
-        await loadTab("all");
-      }
-
-      async function checkRequests() {
-        const { count } = await supabase
-          .from("friendships")
-          .select("id", { count: "exact" })
-          .eq("addressee_id", currentUser.id)
-          .eq("status", "pending");
-
-        if (count > 0) {
-          const badge = document.getElementById("requests-badge");
-          badge.textContent = count;
-          badge.style.display = "inline-flex";
-        }
-      }
-
-      window.loadTab = async function (tab) {
-        ["all", "requests", "suggestions", "online"].forEach((t) => {
-          const btn = document.getElementById(`tab-${t}`);
-          if (btn)
-            btn.className = `btn btn-sm ${t === tab ? "btn-primary" : "btn-ghost"}`;
-        });
-
-        const content = document.getElementById("friends-content");
-        content.innerHTML =
-          '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
-
-        if (tab === "all") await loadAllFriends(content);
-        else if (tab === "requests") await loadRequests(content);
-        else if (tab === "suggestions") await loadSuggestions(content);
-        else if (tab === "online") await loadOnline(content);
-      };
-
-      async function loadAllFriends(content) {
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select(
-            `
-      id,
-      requester_id, addressee_id,
-      requester:profiles!requester_id(id, full_name, avatar_url, city, status),
-      addressee:profiles!addressee_id(id, full_name, avatar_url, city, status)
-    `,
-          )
-          .or(
-            `requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`,
-          )
-          .eq("status", "accepted");
-
-        allFriends = (friendships || [])
-          .map((f) => ({
-            friendship_id: f.id,
-            ...(f.requester_id === currentUser.id ? f.addressee : f.requester),
-          }))
-          .filter((f) => f?.id);
-
-        renderFriends(content, allFriends);
-      }
-
-      function renderFriends(content, friends) {
-        if (!friends.length) {
-          content.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><h3>No friends yet</h3><p>Add some friends to see them here!</p></div>`;
-          return;
-        }
-
-        content.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
-      ${friends
-        .map(
-          (f) => `
-        <div class="card" style="padding:16px;display:flex;align-items:center;gap:12px;transition:all 0.18s">
-          <div style="position:relative">
-            <img class="avatar avatar-md" src="${avatarUrl(f.avatar_url)}" alt=""
-                 style="cursor:pointer" onclick="window.location.href='../pages/profile.html?id=${f.id}'">
-            ${f.status === "online" ? '<div class="online-dot"></div>' : ""}
+    <div class="friends-layout">
+      <!-- Left nav -->
+      <div class="friends-side">
+        <div class="card" style="padding:6px 0">
+          <div class="fr-nav-item active" id="fn-friends" onclick="loadSection('friends',this)">
+            <span>My Friends</span><span id="fn-friends-count" style="font-size:11px;color:var(--text3)"></span>
           </div>
-          <div style="flex:1;min-width:0">
-            <a href="../pages/profile.html?id=${f.id}" style="font-weight:700;font-size:14px;color:var(--text);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.full_name}</a>
-            ${f.city ? `<div style="font-size:11px;color:var(--text3)">📍 ${f.city}</div>` : ""}
-            <div style="font-size:11px;color:${f.status === "online" ? "var(--green)" : "var(--text3)"}">${f.status === "online" ? "● Online" : "Offline"}</div>
+          <div class="fr-nav-item" id="fn-requests" onclick="loadSection('requests',this)">
+            <span>Friend Requests</span><span id="fn-req-badge" style="background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px;display:none">0</span>
           </div>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <button class="btn btn-primary btn-sm" onclick="window.location.href='../pages/messages.html?user=${f.id}'">✉️</button>
-            <button class="btn btn-ghost btn-sm" onclick="removeFriend('${f.friendship_id}', this)">✕</button>
+          <div class="fr-nav-item" id="fn-sent" onclick="loadSection('sent',this)">
+            <span>Sent Requests</span>
+          </div>
+          <div class="fr-nav-item" id="fn-suggested" onclick="loadSection('suggested',this)">
+            <span>Suggestions</span>
           </div>
         </div>
-      `,
-        )
-        .join("")}
-    </div>
-  `;
-      }
+      </div>
 
-      async function loadRequests(content) {
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select(
-            "id, created_at, requester:profiles!requester_id(id, full_name, avatar_url, city)",
-          )
-          .eq("addressee_id", currentUser.id)
-          .eq("status", "pending")
-          .order("created_at", { ascending: false });
-
-        if (!friendships?.length) {
-          content.innerHTML = `<div class="empty-state"><div class="empty-icon">📬</div><h3>No friend requests</h3></div>`;
-          return;
-        }
-
-        content.innerHTML = `
-    <div class="panel-title" style="margin-bottom:12px">Friend Requests (${friendships.length})</div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${friendships
-        .map(
-          (f) => `
-        <div class="card" style="padding:14px;display:flex;align-items:center;gap:12px" id="req-${f.id}">
-          <img class="avatar avatar-md" src="${avatarUrl(f.requester.avatar_url)}" alt=""
-               onclick="window.location.href='../pages/profile.html?id=${f.requester.id}'" style="cursor:pointer">
-          <div style="flex:1">
-            <div style="font-weight:700">${f.requester.full_name}</div>
-            ${f.requester.city ? `<div style="font-size:11px;color:var(--text3)">📍 ${f.requester.city}</div>` : ""}
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-green btn-sm" onclick="acceptRequest('${f.id}', '${f.requester.id}')">✅ Accept</button>
-            <button class="btn btn-ghost btn-sm" onclick="declineRequest('${f.id}')">❌ Decline</button>
+      <!-- Main content -->
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div class="search-bar" style="flex:1">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Search friends…" oninput="filterFriends(this.value)" style="padding:0 6px">
           </div>
         </div>
-      `,
-        )
-        .join("")}
-    </div>
-  `;
-      }
-
-      async function loadSuggestions(content) {
-        // Get friend IDs to exclude
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select("requester_id, addressee_id")
-          .or(
-            `requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`,
-          );
-
-        const excludeIds = new Set([currentUser.id]);
-        (friendships || []).forEach((f) => {
-          excludeIds.add(f.requester_id);
-          excludeIds.add(f.addressee_id);
-        });
-
-        const { data: suggestions } = await supabase
-          .from("profiles")
-          .select("id, full_name, avatar_url, city")
-          .not("id", "in", `(${Array.from(excludeIds).join(",")})`)
-          .limit(12);
-
-        if (!suggestions?.length) {
-          content.innerHTML = `<div class="empty-state"><div class="empty-icon">✨</div><h3>No suggestions</h3></div>`;
-          return;
-        }
-
-        content.innerHTML = `
-    <div class="panel-title" style="margin-bottom:12px">People You May Know</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
-      ${suggestions
-        .map(
-          (p) => `
-        <div class="card" style="padding:16px;text-align:center" id="sug-${p.id}">
-          <img class="avatar avatar-lg" src="${avatarUrl(p.avatar_url)}" alt="" style="margin:0 auto 10px;cursor:pointer" onclick="window.location.href='../pages/profile.html?id=${p.id}'">
-          <div style="font-weight:700;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.full_name}</div>
-          ${p.city ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">📍 ${p.city}</div>` : '<div style="margin-bottom:8px"></div>'}
-          <button class="btn btn-primary btn-sm btn-block" onclick="addFriend('${p.id}', this)">➕ Add Friend</button>
+        <div id="section-title" style="font-size:14px;font-weight:500;margin-bottom:10px;color:var(--text2)">My Friends</div>
+        <div id="friends-content">
+          <div style="display:flex;justify-content:center;padding:36px"><div class="spinner"></div></div>
         </div>
-      `,
-        )
-        .join("")}
+      </div>
     </div>
-  `;
-      }
+  </main>
+</div>
+<div id="toast-container"></div>
 
-      async function loadOnline(content) {
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select(
-            "requester_id, addressee_id, requester:profiles!requester_id(id, full_name, avatar_url, status), addressee:profiles!addressee_id(id, full_name, avatar_url, status)",
-          )
-          .or(
-            `requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`,
-          )
-          .eq("status", "accepted");
+<script type="module">
+import { supabase, requireAuth, getCurrentProfile, avatarUrl } from '../js/supabase.js';
+import { toast, renderSidebar, renderHeader } from '../js/app.js';
 
-        const online = (friendships || [])
-          .map((f) =>
-            f.requester_id === currentUser.id ? f.addressee : f.requester,
-          )
-          .filter((f) => f?.status === "online");
+let user, profile, allFriends = [], currentSection = 'friends';
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 
-        if (!online.length) {
-          content.innerHTML = `<div class="empty-state"><div class="empty-icon">🟢</div><h3>No friends online right now</h3></div>`;
-          return;
-        }
+async function init() {
+  user    = await requireAuth(); if (!user) return;
+  profile = await getCurrentProfile();
+  renderHeader(profile, 'friends');
+  document.getElementById('sidebar').innerHTML = renderSidebar(profile, 'friends');
+  loadSection('friends', document.getElementById('fn-friends'));
 
-        renderFriends(content, online);
-      }
+  // Load pending count
+  const {count} = await supabase.from('friendships').select('id',{count:'exact',head:true}).eq('addressee_id',user.id).eq('status','pending');
+  if (count) {
+    const b = document.getElementById('fn-req-badge');
+    b.textContent = count; b.style.display='inline';
+  }
+}
 
-      window.searchFriends = function (query) {
-        if (!query.trim()) {
-          renderFriends(document.getElementById("friends-content"), allFriends);
-          return;
-        }
-        const filtered = allFriends.filter((f) =>
-          f.full_name.toLowerCase().includes(query.toLowerCase()),
-        );
-        renderFriends(document.getElementById("friends-content"), filtered);
-      };
+window.loadSection = async function(section, el) {
+  currentSection = section;
+  document.querySelectorAll('.fr-nav-item').forEach(e=>e.classList.remove('active'));
+  if(el) el.classList.add('active');
+  const titles = {friends:'My Friends',requests:'Friend Requests',sent:'Sent Requests',suggested:'People You May Know'};
+  document.getElementById('section-title').textContent = titles[section]||section;
+  document.getElementById('friends-content').innerHTML = '<div style="display:flex;justify-content:center;padding:36px"><div class="spinner"></div></div>';
 
-      window.addFriend = async function (userId, btn) {
-        btn.disabled = true;
-        btn.textContent = "Sent ✓";
-        const { error } = await supabase.from("friendships").insert({
-          requester_id: currentUser.id,
-          addressee_id: userId,
-          status: "pending",
-        });
-        if (error) {
-          btn.disabled = false;
-          btn.textContent = "➕ Add Friend";
-          toast("Failed", "error");
-          return;
-        }
-        await supabase.from("notifications").insert({
-          user_id: userId,
-          actor_id: currentUser.id,
-          type: "friend_request",
-        });
-        toast("Friend request sent!", "success");
-      };
+  if (section === 'friends') await loadFriends();
+  else if (section === 'requests') await loadRequests();
+  else if (section === 'sent') await loadSent();
+  else if (section === 'suggested') await loadSuggested();
+};
 
-      window.acceptRequest = async function (friendshipId, requesterId) {
-        await supabase
-          .from("friendships")
-          .update({ status: "accepted" })
-          .eq("id", friendshipId);
-        await supabase.from("notifications").insert({
-          user_id: requesterId,
-          actor_id: currentUser.id,
-          type: "friend_accept",
-        });
-        document.getElementById(`req-${friendshipId}`)?.remove();
-        toast("Friend request accepted!", "success");
-        await checkRequests();
-      };
+async function loadFriends() {
+  const {data:fs} = await supabase.from('friendships')
+    .select('id,requester_id,addressee_id')
+    .or('requester_id.eq.'+user.id+',addressee_id.eq.'+user.id)
+    .eq('status','accepted');
+  const ids = (fs||[]).map(f=>f.requester_id===user.id?f.addressee_id:f.requester_id);
+  document.getElementById('fn-friends-count').textContent = ids.length;
+  if (!ids.length) {
+    renderEmpty('No friends yet. Search for people to add!', 'friends-content');
+    return;
+  }
+  const {data:pp} = await supabase.from('profiles').select('id,full_name,avatar_url,bio').in('id',ids).order('full_name').limit(50);
+  allFriends = pp||[];
+  renderPeople(allFriends, 'friend', fs);
+}
 
-      window.declineRequest = async function (friendshipId) {
-        await supabase.from("friendships").delete().eq("id", friendshipId);
-        document.getElementById(`req-${friendshipId}`)?.remove();
-        toast("Request declined", "info");
-        await checkRequests();
-      };
+async function loadRequests() {
+  const {data:fs} = await supabase.from('friendships')
+    .select('id,requester_id,addressee_id, requester:profiles!requester_id(id,full_name,avatar_url,bio)')
+    .eq('addressee_id',user.id).eq('status','pending');
+  const list = document.getElementById('friends-content');
+  if (!(fs||[]).length) { list.innerHTML='<div class="empty-state"><h3>No pending requests</h3></div>'; return; }
+  list.innerHTML = '<div class="friends-grid">'
+    + (fs||[]).map(f=>`
+    <div class="friend-card" style="text-align:center">
+      <img src="${avatarUrl(f.requester?.avatar_url)}" alt="" onclick="location.href='../pages/profile.html?id=${f.requester_id}'" onerror="this.src='../assets/default-avatar.svg'">
+      <div class="friend-card-name" style="margin-bottom:8px">${esc(f.requester?.full_name||'User')}</div>
+      <div style="display:flex;gap:6px;justify-content:center">
+        <button class="btn btn-primary btn-sm" onclick="acceptReq('${f.id}','${f.requester_id}',this)">Accept</button>
+        <button class="btn btn-secondary btn-sm" onclick="declineReq('${f.id}',this)">Decline</button>
+      </div>
+    </div>`).join('')
+    + '</div>';
+}
 
-      window.removeFriend = async function (friendshipId, btn) {
-        if (!confirm("Remove this friend?")) return;
-        await supabase.from("friendships").delete().eq("id", friendshipId);
-        btn.closest(".card")?.remove();
-        toast("Friend removed", "info");
-      };
+async function loadSent() {
+  const {data:fs} = await supabase.from('friendships')
+    .select('id,addressee_id, addressee:profiles!addressee_id(id,full_name,avatar_url)')
+    .eq('requester_id',user.id).eq('status','pending');
+  const list = document.getElementById('friends-content');
+  if (!(fs||[]).length) { list.innerHTML='<div class="empty-state"><h3>No sent requests</h3></div>'; return; }
+  list.innerHTML = '<div class="friends-grid">'
+    + (fs||[]).map(f=>`
+    <div class="friend-card">
+      <img src="${avatarUrl(f.addressee?.avatar_url)}" alt="" onclick="location.href='../pages/profile.html?id=${f.addressee_id}'" onerror="this.src='../assets/default-avatar.svg'">
+      <div class="friend-card-name" style="margin-bottom:8px">${esc(f.addressee?.full_name||'User')}</div>
+      <button class="btn btn-secondary btn-sm" onclick="cancelReq('${f.id}',this)">Cancel Request</button>
+    </div>`).join('')
+    + '</div>';
+}
 
-      window.toggleSidebar = function () {
-        document.getElementById("sidebar").classList.toggle("open");
-      };
+async function loadSuggested() {
+  // Get users the current user has no connection with
+  const {data:existingFs} = await supabase.from('friendships')
+    .select('requester_id,addressee_id')
+    .or('requester_id.eq.'+user.id+',addressee_id.eq.'+user.id);
+  const connected = new Set([user.id]);
+  (existingFs||[]).forEach(f=>{connected.add(f.requester_id);connected.add(f.addressee_id);});
 
-      init();
-    </script>
-  </body>
+  const {data:pp} = await supabase.from('profiles').select('id,full_name,avatar_url,bio').limit(40);
+  const suggestions = (pp||[]).filter(p=>!connected.has(p.id)).slice(0,20);
+  if (!suggestions.length) { renderEmpty('No suggestions right now','friends-content'); return; }
+  allFriends = suggestions;
+  renderPeople(suggestions, 'suggest', null);
+}
+
+function renderPeople(people, mode, fships) {
+  const list = document.getElementById('friends-content');
+  if (!people.length) { list.innerHTML='<div class="empty-state"><h3>No results</h3></div>'; return; }
+  list.innerHTML = '<div class="friends-grid">'
+    + people.map(p=>`
+    <div class="friend-card">
+      <img src="${avatarUrl(p.avatar_url)}" alt="" onclick="location.href='../pages/profile.html?id=${p.id}'" onerror="this.src='../assets/default-avatar.svg'">
+      <div class="friend-card-name">${esc(p.full_name)}</div>
+      ${p.bio ? '<div style="font-size:11px;color:var(--text3);margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.bio)+'</div>' : ''}
+      <div style="display:flex;gap:6px;justify-content:center;margin-top:8px">
+        <button class="btn btn-primary btn-sm" onclick="location.href='../pages/messages.html?user=${p.id}'">Message</button>
+        ${mode==='friend'
+          ? '<button class="btn btn-secondary btn-sm" onclick="removeFriend(\''+p.id+'\',this)">Remove</button>'
+          : '<button class="btn btn-secondary btn-sm" onclick="addFriend(\''+p.id+'\',this)">Add Friend</button>'}
+      </div>
+    </div>`).join('')
+    + '</div>';
+}
+
+function renderEmpty(msg, id) {
+  document.getElementById(id).innerHTML = '<div class="empty-state"><h3>'+msg+'</h3><a class="btn btn-primary btn-sm" href="../pages/search.html" style="margin-top:12px">Find People</a></div>';
+}
+
+window.filterFriends = q => {
+  if (currentSection !== 'friends') return;
+  renderPeople(!q.trim() ? allFriends : allFriends.filter(p=>(p.full_name||'').toLowerCase().includes(q.toLowerCase())), 'friend', null);
+};
+
+window.addFriend = async function(uid, btn) {
+  btn.disabled = true; btn.textContent = 'Sent';
+  const {error} = await supabase.from('friendships').insert({requester_id:user.id,addressee_id:uid,status:'pending'});
+  if (error) { toast('Error: '+error.message,'error'); btn.disabled=false; btn.textContent='Add Friend'; return; }
+  toast('Friend request sent!','success');
+};
+
+window.acceptReq = async function(fid, fromId, btn) {
+  btn.disabled = true;
+  await supabase.from('friendships').update({status:'accepted'}).eq('id',fid);
+  toast('Friend added!','success');
+  btn.closest('.friend-card').remove();
+};
+
+window.declineReq = async function(fid, btn) {
+  await supabase.from('friendships').delete().eq('id',fid);
+  btn.closest('.friend-card').remove();
+  toast('Request declined','info');
+};
+
+window.cancelReq = async function(fid, btn) {
+  await supabase.from('friendships').delete().eq('id',fid);
+  btn.closest('.friend-card').remove();
+  toast('Request cancelled','info');
+};
+
+window.removeFriend = async function(uid, btn) {
+  if (!confirm('Remove friend?')) return;
+  await supabase.from('friendships').delete()
+    .or('and(requester_id.eq.'+user.id+',addressee_id.eq.'+uid+'),and(requester_id.eq.'+uid+',addressee_id.eq.'+user.id+')');
+  btn.closest('.friend-card').remove();
+  toast('Friend removed','info');
+};
+
+window.toggleSidebar = ()=>document.getElementById('sidebar').classList.toggle('open');
+init();
+</script>
+</body>
 </html>

@@ -9,675 +9,512 @@
   <link rel="stylesheet" href="../css/components.css">
 </head>
 <body>
-<div class="app-shell">
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar"></aside>
+<!-- VK-style fixed header -->
+<header class="vk-header" id="vk-header"></header>
 
-  <!-- Main -->
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
   <main class="main-content">
+
     <!-- Mobile topbar -->
     <div class="topbar">
-      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:22px">☰</button>
-      <span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;background:linear-gradient(135deg,var(--accent),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VEtmle</span>
+      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:20px">&#9776;</button>
+      <span style="font-weight:700;font-size:16px;color:var(--accent)">VEtmle</span>
     </div>
 
-    <div class="page-container single-col">
-      <div class="feed-col">
+    <div class="feed-layout">
+      <!-- Left: main feed -->
+      <div style="min-width:0">
 
-        <!-- Story Bar -->
-        <div class="card" style="padding:14px;margin-bottom:14px;overflow-x:auto">
-          <div style="display:flex;gap:10px;min-width:max-content" id="stories-bar">
-            <div class="story-add-btn" onclick="addStory()" style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-width:64px">
-              <div style="width:60px;height:60px;border-radius:50%;background:var(--surface2);border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.2s">➕</div>
-              <span style="font-size:11px;color:var(--text3)">Add Story</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Compose Post -->
         <!-- Stories -->
         <div class="stories-strip" id="stories-strip">
           <div class="story-item story-add" onclick="toast('Stories coming soon!','info')">
             <div class="story-ring"><div class="story-add-icon">+</div></div>
-            <div class="story-name">Add Story</div>
+            <div class="story-name">Your Story</div>
           </div>
         </div>
 
+        <!-- Compose -->
         <div class="post-compose card" id="compose-box">
           <div class="compose-row">
-            <img id="compose-avatar" src="../assets/default-avatar.svg" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center;flex-shrink:0;display:block;background:var(--surface3)">
-            <textarea class="compose-input" id="compose-text" placeholder="What's on your mind?" rows="2"
-              onfocus="expandCompose()" style="height:48px;overflow:hidden"></textarea>
+            <img id="compose-avatar" src="../assets/default-avatar.svg" alt=""
+              style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0">
+            <textarea class="compose-input" id="compose-text"
+              placeholder="What's on your mind?"
+              oninput="onComposeInput(this)" onfocus="expandCompose()"></textarea>
           </div>
-          <!-- image preview -->
-          <div id="image-preview" style="display:none;margin:8px 0 0 56px;position:relative;width:fit-content">
-            <img id="image-preview-img" style="max-height:240px;max-width:100%;border-radius:10px;object-fit:cover;display:block" src="" alt="">
-            <button onclick="clearImage()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">✕</button>
+          <div id="image-preview" style="display:none;margin:0 14px 8px;position:relative">
+            <img id="image-preview-img" style="max-height:220px;max-width:100%;border-radius:6px;object-fit:cover;display:block" src="" alt="">
+            <button onclick="clearImage()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.65);color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:13px;cursor:pointer;line-height:1">&#10005;</button>
           </div>
           <div class="compose-footer" id="compose-footer" style="display:none">
             <div class="compose-tools">
-              <button class="compose-tool-btn" onclick="document.getElementById('post-image-input').click()" title="Add photo" style="display:flex;align-items:center;gap:4px;padding:0 10px;width:auto;font-size:13px;font-weight:600;color:var(--text2)">
-                🖼️ <span>Photo</span>
+              <button class="compose-tool-btn" onclick="document.getElementById('post-img-inp').click()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Photo
               </button>
             </div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <span id="char-count" style="font-size:11px;color:var(--text3)">0 / 2000</span>
-              <button class="btn btn-primary btn-sm" id="post-submit-btn" onclick="submitPost()">Post</button>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="char-count" style="font-size:11px;color:var(--text3)"></span>
+              <button class="btn btn-primary btn-sm" id="post-btn" onclick="submitPost()">Post</button>
             </div>
           </div>
-          <input type="file" id="post-image-input" accept="image/*" style="display:none" onchange="previewImage(this)">
+          <input type="file" id="post-img-inp" accept="image/*" style="display:none" onchange="previewImage(this)">
         </div>
 
-        <!-- Filter Tabs -->
-        <div style="display:flex;gap:4px;margin-bottom:12px">
-          <button class="btn btn-primary btn-sm" id="filter-all" onclick="setFilter('all')">All Posts</button>
-          <button class="btn btn-ghost btn-sm" id="filter-friends" onclick="setFilter('friends')">Friends</button>
+        <!-- Filter tabs -->
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button class="tab-btn active" id="tab-all"     onclick="setFilter('all',this)">All Posts</button>
+          <button class="tab-btn"        id="tab-friends" onclick="setFilter('friends',this)">Friends</button>
         </div>
 
         <!-- Feed -->
-        <div id="feed-container">
-          <div style="display:flex;justify-content:center;padding:40px">
-            <div class="spinner"></div>
-          </div>
-        </div>
-
-        <div id="load-more-wrap" style="text-align:center;padding:16px;display:none">
-          <button class="btn btn-ghost" onclick="loadMorePosts()">Load More</button>
+        <div id="feed"></div>
+        <div id="load-more" style="text-align:center;padding:14px;display:none">
+          <button class="btn btn-secondary" onclick="loadMore()">Load more</button>
         </div>
       </div>
-          </div><!-- end left col -->
 
-      <!-- Right Sidebar -->
-      <div class="right-sidebar" id="right-sidebar" style="display:none">
-        <!-- Online Friends Widget -->
-        <div class="widget" id="online-widget">
-          <div class="widget-title">
-            <span>Online Friends</span>
-            <span id="online-count" style="font-size:11px;color:var(--text3)"></span>
-          </div>
-          <div id="online-list"><div style="font-size:12px;color:var(--text3)">Loading...</div></div>
-        </div>
-        <!-- Suggested Communities -->
-        <div class="widget">
-          <div class="widget-title"><span>Suggested Communities</span></div>
-          <div id="suggested-comms"><div style="font-size:12px;color:var(--text3)">Loading...</div></div>
-        </div>
-        <!-- Upcoming Events -->
+      <!-- Right sidebar -->
+      <div class="right-col" id="right-col">
         <div class="widget">
           <div class="widget-title">
-            <span>Upcoming Events</span>
-            <a href="../pages/events.html" style="font-size:11px;color:var(--accent);text-decoration:none">See all</a>
+            Friends online <a href="../pages/friends.html">See all</a>
           </div>
-          <div id="upcoming-events"><div style="font-size:12px;color:var(--text3)">Loading...</div></div>
+          <div id="w-friends"><div style="color:var(--text3);font-size:12px">Loading...</div></div>
+        </div>
+        <div class="widget">
+          <div class="widget-title">
+            Communities <a href="../pages/groups.html">See all</a>
+          </div>
+          <div id="w-groups"><div style="color:var(--text3);font-size:12px">Loading...</div></div>
+        </div>
+        <div class="widget">
+          <div class="widget-title">
+            Upcoming Events <a href="../pages/events.html">See all</a>
+          </div>
+          <div id="w-events"><div style="color:var(--text3);font-size:12px">Loading...</div></div>
         </div>
       </div>
-    </div><!-- end two-col -->
+    </div>
+
   </main>
 </div>
 
+<div id="mini-player"></div>
 <div id="toast-container"></div>
 
 <script type="module">
-import { initMiniPlayer } from '../js/player.js';
 import { supabase, requireAuth, getCurrentProfile, avatarUrl, timeAgo } from '../js/supabase.js';
-import { toast, renderSidebar, renderPost, formatCount } from '../js/app.js';
+import { toast, renderSidebar, renderHeader, renderPost, formatCount, createModal, openImageViewer } from '../js/app.js';
+import { initMiniPlayer } from '../js/player.js';
 
-let currentUser = null;
-let currentProfile = null;
-let postOffset = 0;
-const PAGE_SIZE = 10;
-let currentFilter = 'all';
-let selectedImageFile = null;
+let user, profile, offset = 0, filter = 'all', imgFile = null;
+const PAGE = 12;
 
+function esc(s){ const d=document.createElement('div');d.textContent=s||'';return d.innerHTML; }
+
+// ── boot ──────────────────────────────────────────────────────
 async function init() {
-  currentUser = await requireAuth();
-  if (!currentUser) return;
-  currentProfile = await getCurrentProfile();
+  user    = await requireAuth(); if (!user) return;
+  profile = await getCurrentProfile();
 
-  // Render sidebar
+  renderHeader(profile, 'feed');
+  document.getElementById('sidebar').innerHTML = renderSidebar(profile, 'feed');
   initMiniPlayer();
-  document.getElementById('sidebar').innerHTML = renderSidebar(currentProfile, 'feed');
 
-  // Set compose avatar
-  document.getElementById('compose-avatar').src = avatarUrl(currentProfile?.avatar_url);
+  document.getElementById('compose-avatar').src = avatarUrl(profile?.avatar_url);
 
-  await loadPosts();
+  await loadPosts(true);
+  loadWidgets();
+  loadStories();
   setupRealtime();
 }
 
-window.setFilter = function(f) {
-  currentFilter = f;
-  document.getElementById('filter-all').className = `btn btn-sm ${f === 'all' ? 'btn-primary' : 'btn-ghost'}`;
-  document.getElementById('filter-friends').className = `btn btn-sm ${f === 'friends' ? 'btn-primary' : 'btn-ghost'}`;
-  postOffset = 0;
-  document.getElementById('feed-container').innerHTML = '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
-  loadPosts();
-};
+// ── posts ─────────────────────────────────────────────────────
+async function loadPosts(reset = false) {
+  if (reset) { offset = 0; document.getElementById('feed').innerHTML = '<div style="display:flex;justify-content:center;padding:36px"><div class="spinner"></div></div>'; }
 
-async function loadPosts() {
-  let query = supabase
-    .from('posts')
-    .select(`
-      *,
-      author:profiles!author_id(id, full_name, username, avatar_url),
-      wall_owner:profiles!wall_owner_id(id, full_name, username)
-    `)
-    .order('created_at', { ascending: false })
-    .range(postOffset, postOffset + PAGE_SIZE - 1);
+  let q = supabase.from('posts')
+    .select('*, author:profiles!author_id(id,full_name,username,avatar_url), wall_owner:profiles!wall_owner_id(id,full_name,username)')
+    .order('created_at',{ascending:false})
+    .range(offset, offset+PAGE-1);
 
-  if (currentFilter === 'friends') {
-    // Get friend IDs
-    const { data: friends } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
-      .eq('status', 'accepted');
-
-    const friendIds = (friends || []).map(f =>
-      f.requester_id === currentUser.id ? f.addressee_id : f.requester_id
-    );
-    friendIds.push(currentUser.id);
-    query = query.in('author_id', friendIds);
+  if (filter === 'friends') {
+    const {data:fs} = await supabase.from('friendships')
+      .select('requester_id,addressee_id')
+      .or('requester_id.eq.'+user.id+',addressee_id.eq.'+user.id)
+      .eq('status','accepted');
+    const ids = [...(fs||[]).map(f=>f.requester_id===user.id?f.addressee_id:f.requester_id), user.id];
+    if (ids.length === 1) {
+      if (reset) document.getElementById('feed').innerHTML = '<div class="empty-state"><h3>No friends yet</h3><p>Add friends to see their posts here.</p></div>';
+      return;
+    }
+    q = q.in('author_id', ids);
   }
 
-  const { data: posts, error } = await query;
-  if (error) { toast('Failed to load posts', 'error'); return; }
+  const {data:posts, error} = await q;
+  if (error) { toast('Could not load posts: '+error.message,'error'); return; }
 
-  // Get user likes
+  // batch-load likes & bookmarks
+  let likedSet=new Set(), bmSet=new Set();
   if (posts?.length) {
-    const { data: userLikes } = await supabase
-      .from('likes')
-      .select('post_id')
-      .eq('user_id', currentUser.id)
-      .in('post_id', posts.map(p => p.id));
-
-    const likedSet = new Set((userLikes || []).map(l => l.post_id));
-    posts.forEach(p => p.user_liked = likedSet.has(p.id));
+    const ids = posts.map(p=>p.id);
+    const [{data:lks},{data:bms}] = await Promise.all([
+      supabase.from('likes').select('post_id').eq('user_id',user.id).in('post_id',ids),
+      supabase.from('bookmarks').select('post_id').eq('user_id',user.id).in('post_id',ids),
+    ]);
+    likedSet = new Set((lks||[]).map(l=>l.post_id));
+    bmSet    = new Set((bms||[]).map(b=>b.post_id));
+    posts.forEach(p=>{ p.user_liked=likedSet.has(p.id); p.user_bookmarked=bmSet.has(p.id); });
   }
 
-  const container = document.getElementById('feed-container');
-  if (postOffset === 0) container.innerHTML = '';
-
-  if (!posts?.length && postOffset === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📰</div>
-        <h3>No posts yet</h3>
-        <p>Follow some people or post something yourself!</p>
-      </div>
-    `;
+  const feed = document.getElementById('feed');
+  if (reset) feed.innerHTML = '';
+  if (!posts?.length && offset===0) {
+    feed.innerHTML = '<div class="empty-state"><h3>No posts yet</h3><p>Be the first to post something!</p></div>';
     return;
   }
-
-  posts.forEach(post => {
-    container.insertAdjacentHTML('beforeend', renderPost(post, currentUser.id));
-  });
-
-  const loadMoreWrap = document.getElementById('load-more-wrap');
-  loadMoreWrap.style.display = posts?.length === PAGE_SIZE ? 'block' : 'none';
-  postOffset += posts.length;
+  posts?.forEach(p => feed.insertAdjacentHTML('beforeend', renderPost(p, user.id)));
+  offset += posts?.length || 0;
+  document.getElementById('load-more').style.display = (posts?.length===PAGE) ? 'block' : 'none';
 }
 
-window.loadMorePosts = function() {
-  loadPosts();
+window.loadMore = () => loadPosts(false);
+
+window.setFilter = function(f, btn) {
+  filter = f;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadPosts(true);
 };
 
-// ── Compose ──
+// ── compose ───────────────────────────────────────────────────
 window.expandCompose = function() {
-  const input = document.getElementById('compose-text');
-  input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-  input.style.overflow = 'auto';
   document.getElementById('compose-footer').style.display = 'flex';
 };
-
-document.getElementById('compose-text')?.addEventListener('input', function() {
-  window.expandCompose();
-  const len = this.value.length;
-  const el = document.getElementById('char-count');
-  el.textContent = `${len} / 2000`;
-  el.style.color = len > 1800 ? 'var(--red)' : 'var(--text3)';
-});
-
-window.previewImage = function(input) {
-  if (!input.files || !input.files[0]) return;
-  selectedImageFile = input.files[0];
-  const url = URL.createObjectURL(selectedImageFile);
-  const img = document.getElementById('image-preview-img');
-  img.src = url;
-  img.onload = function() {
-    document.getElementById('image-preview').style.display = 'block';
-  };
-  // also expand compose if not already
-  window.expandCompose();
+window.onComposeInput = function(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200)+'px';
+  expandCompose();
+  const n = el.value.length;
+  document.getElementById('char-count').textContent = n > 1600 ? n+'/2000' : '';
+  document.getElementById('char-count').style.color = n > 1800 ? 'var(--red)' : 'var(--text3)';
 };
-
+window.previewImage = function(inp) {
+  if (!inp.files[0]) return;
+  imgFile = inp.files[0];
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('image-preview-img').src = e.target.result;
+    document.getElementById('image-preview').style.display = 'block';
+    expandCompose();
+  };
+  r.readAsDataURL(imgFile);
+};
 window.clearImage = function() {
-  selectedImageFile = null;
-  const inp = document.getElementById('post-image-input');
-  if (inp) inp.value = '';
-  const prev = document.getElementById('image-preview');
-  if (prev) prev.style.display = 'none';
-  const img = document.getElementById('image-preview-img');
-  if (img) img.src = '';
+  imgFile = null;
+  document.getElementById('post-img-inp').value = '';
+  document.getElementById('image-preview').style.display = 'none';
+  document.getElementById('image-preview-img').src = '';
 };
 
 window.submitPost = async function() {
-  const content = document.getElementById('compose-text').value.trim();
-  if (!content && !selectedImageFile) { toast('Write something first!', 'info'); return; }
-  if (content.length > 2000) { toast('Post is too long', 'error'); return; }
+  const txt = document.getElementById('compose-text').value.trim();
+  if (!txt && !imgFile) { toast('Write something first!','info'); return; }
+  if (txt.length > 2000) { toast('Post too long (max 2000 chars)','error'); return; }
 
-  const btn = document.getElementById('post-submit-btn');
-  btn.disabled = true;
-  btn.textContent = selectedImageFile ? 'Uploading...' : 'Posting...';
+  const btn = document.getElementById('post-btn');
+  btn.disabled = true; btn.textContent = imgFile ? 'Uploading…' : 'Posting…';
 
   let imageUrl = null;
-  if (selectedImageFile) {
+  if (imgFile) {
     try {
-      const ext  = selectedImageFile.name.split('.').pop();
-      const path = Date.now() + '-' + Math.random().toString(36).slice(2) + '.' + ext;
-      const { error: upErr } = await supabase.storage
-        .from('posts')
-        .upload(path, selectedImageFile, { cacheControl: '3600', upsert: false });
-      if (upErr) throw upErr;
+      const ext  = imgFile.name.split('.').pop().toLowerCase();
+      const path = Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+ext;
+      const {error:ue} = await supabase.storage.from('posts').upload(path, imgFile, {cacheControl:'3600',upsert:false});
+      if (ue) throw ue;
       imageUrl = supabase.storage.from('posts').getPublicUrl(path).data.publicUrl;
-    } catch (e) {
-      toast('Image upload failed: ' + e.message, 'error');
-      btn.disabled = false; btn.textContent = 'Post';
-      return;
-    }
+    } catch(e) { toast('Image upload failed: '+e.message,'error'); btn.disabled=false; btn.textContent='Post'; return; }
   }
 
-  const { data: post, error } = await supabase.from('posts').insert({
-    author_id: currentUser.id,
-    wall_owner_id: currentUser.id,
-    content: content || '',
-    image_url: imageUrl,
-  }).select('*, author:profiles!author_id(id, full_name, username, avatar_url)').single();
+  const {data:post, error} = await supabase.from('posts').insert({
+    author_id:user.id, wall_owner_id:user.id,
+    content:txt||'', image_url:imageUrl,
+  }).select('*, author:profiles!author_id(id,full_name,username,avatar_url)').single();
 
   btn.disabled = false; btn.textContent = 'Post';
-  if (error) { toast('Failed to post: ' + error.message, 'error'); return; }
+  if (error) { toast('Post failed: '+error.message,'error'); return; }
 
   document.getElementById('compose-text').value = '';
-  document.getElementById('compose-text').style.height = '48px';
+  document.getElementById('compose-text').style.height = 'auto';
   document.getElementById('compose-footer').style.display = 'none';
-  document.getElementById('char-count').textContent = '0 / 2000';
+  document.getElementById('char-count').textContent = '';
   clearImage();
 
-  post.user_liked = false;
-  const container = document.getElementById('feed-container');
-  const empty = container.querySelector('.empty-state');
+  post.user_liked = false; post.user_bookmarked = false;
+  const feed = document.getElementById('feed');
+  const empty = feed.querySelector('.empty-state');
   if (empty) empty.remove();
-  container.insertAdjacentHTML('afterbegin', renderPost(post, currentUser.id));
-  toast('Posted!', 'success');
+  feed.insertAdjacentHTML('afterbegin', renderPost(post, user.id));
+  toast('Posted!','success');
 };
 
-// ── Post interactions ──
+// ── post actions ──────────────────────────────────────────────
 window.handleLike = async function(btn, postId) {
-  const isLiked = btn.classList.contains('liked');
-  const countEl = btn.querySelector('.count');
+  const liked = btn.classList.contains('liked');
+  const cnt   = btn.querySelector('.count');
+  const n     = parseInt(cnt.textContent)||0;
+  const svgHeart    = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+  const svgHeartOut = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
 
-  if (isLiked) {
+  if (liked) {
     btn.classList.remove('liked');
-    btn.innerHTML = `🤍 <span class="count">${Math.max(0, parseInt(countEl.textContent) - 1)}</span>`;
-    await supabase.from('likes').delete().match({ user_id: currentUser.id, post_id: postId });
+    cnt.textContent = Math.max(0,n-1);
+    btn.querySelector('svg')?.remove();
+    btn.insertAdjacentHTML('afterbegin', svgHeartOut);
+    await supabase.from('likes').delete().match({user_id:user.id,post_id:postId});
+    await supabase.from('posts').update({likes_count:Math.max(0,n-1)}).eq('id',postId);
   } else {
     btn.classList.add('liked');
-    btn.innerHTML = `❤️ <span class="count">${parseInt(countEl.textContent) + 1}</span>`;
-    await supabase.from('likes').insert({ user_id: currentUser.id, post_id: postId });
+    cnt.textContent = n+1;
+    btn.querySelector('svg')?.remove();
+    btn.insertAdjacentHTML('afterbegin', svgHeart);
+    await supabase.from('likes').insert({user_id:user.id,post_id:postId}).then(()=>{});
+    await supabase.from('posts').update({likes_count:n+1}).eq('id',postId);
   }
 };
 
 window.toggleComments = async function(btn, postId) {
-  const container = document.getElementById(`comments-${postId}`);
-  if (container.style.display !== 'none') {
-    container.style.display = 'none';
-    return;
-  }
-  container.style.display = 'block';
-  container.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:13px">Loading...</div>';
+  let box = document.getElementById('comments-'+postId);
+  if (!box) return;
+  if (box.style.display !== 'none') { box.style.display='none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div class="comments-section"><div style="color:var(--text3);font-size:12px;padding:8px 0">Loading…</div></div>';
 
-  const { data: comments } = await supabase
-    .from('comments')
-    .select('*, author:profiles!author_id(id, full_name, avatar_url)')
-    .eq('post_id', postId)
-    .order('created_at', { ascending: true });
+  const {data:comments} = await supabase.from('comments')
+    .select('*, author:profiles!author_id(id,full_name,avatar_url)')
+    .eq('post_id',postId).order('created_at',{ascending:true});
 
-  container.innerHTML = `
-    <div class="comments-section">
-      ${(comments || []).map(c => `
-        <div class="comment">
-          <img class="avatar avatar-sm" src="${avatarUrl(c.author?.avatar_url)}" alt="">
-          <div class="comment-body">
-            <div class="comment-author">
-              <a href="../pages/profile.html?id=${c.author_id}">${c.author?.full_name || 'User'}</a>
-            </div>
-            <div class="comment-text">${c.content}</div>
-            <div class="comment-meta">${timeAgo(c.created_at)}</div>
-          </div>
-        </div>
-      `).join('') || '<p style="color:var(--text3);font-size:13px;padding:8px 0">No comments yet</p>'}
-      <div class="comment-input-row">
-        <img class="avatar avatar-sm" src="${avatarUrl(currentProfile?.avatar_url)}" alt="">
-        <input type="text" id="comment-input-${postId}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter')submitComment('${postId}')">
-        <button class="btn btn-primary btn-sm" onclick="submitComment('${postId}')">Send</button>
+  const avt = avatarUrl(profile?.avatar_url);
+  const rows = (comments||[]).map(c=>`
+    <div class="comment">
+      <img src="${avatarUrl(c.author?.avatar_url)}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">
+      <div class="comment-body">
+        <div class="comment-author"><a href="../pages/profile.html?id=${c.author_id}">${esc(c.author?.full_name||'User')}</a></div>
+        <div class="comment-text">${esc(c.content)}</div>
+        <div class="comment-meta">${timeAgo(c.created_at)}</div>
       </div>
+    </div>`).join('');
+
+  box.innerHTML = `<div class="comments-section">
+    ${rows||'<p style="color:var(--text3);font-size:12px;padding:4px 0">No comments yet</p>'}
+    <div class="comment-input-row">
+      <img src="${avt}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">
+      <input id="ci-${postId}" type="text" placeholder="Write a comment…" onkeydown="if(event.key==='Enter')submitComment('${postId}')">
+      <button class="btn btn-primary btn-sm" onclick="submitComment('${postId}')">Send</button>
     </div>
-  `;
+  </div>`;
 };
 
 window.submitComment = async function(postId) {
-  const input = document.getElementById(`comment-input-${postId}`);
-  const content = input.value.trim();
-  if (!content) return;
+  const inp = document.getElementById('ci-'+postId);
+  const txt = inp.value.trim(); if (!txt) return;
+  inp.value = ''; inp.disabled = true;
 
-  const { data: comment, error } = await supabase.from('comments').insert({
-    post_id: postId,
-    author_id: currentUser.id,
-    content,
-  }).select('*, author:profiles!author_id(id, full_name, avatar_url)').single();
+  const {data:c,error} = await supabase.from('comments').insert({
+    post_id:postId, author_id:user.id, content:txt,
+  }).select('*, author:profiles!author_id(id,full_name,avatar_url)').single();
 
-  if (error) { toast('Failed to comment', 'error'); return; }
-  input.value = '';
+  inp.disabled = false;
+  if (error) { toast('Comment failed','error'); return; }
 
-  const section = document.querySelector(`#comments-${postId} .comments-section`);
-  const inputRow = section.querySelector('.comment-input-row');
-  const commentEl = document.createElement('div');
-  commentEl.className = 'comment';
-  commentEl.innerHTML = `
-    <img class="avatar avatar-sm" src="${avatarUrl(comment.author?.avatar_url)}" alt="">
+  // update count
+  const countEl = document.querySelector('[data-post-id="'+postId+'"] .post-action-btn:nth-child(2) .count');
+  if (countEl) countEl.textContent = parseInt(countEl.textContent||0)+1;
+
+  const section = document.querySelector('#comments-'+postId+' .comments-section');
+  const row     = section.querySelector('.comment-input-row');
+  const el = document.createElement('div');
+  el.className = 'comment';
+  el.innerHTML = `
+    <img src="${avatarUrl(c.author?.avatar_url)}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">
     <div class="comment-body">
-      <div class="comment-author"><a href="../pages/profile.html?id=${comment.author_id}">${comment.author?.full_name || 'User'}</a></div>
-      <div class="comment-text">${comment.content}</div>
+      <div class="comment-author"><a href="../pages/profile.html?id=${c.author_id}">${esc(c.author?.full_name||'User')}</a></div>
+      <div class="comment-text">${esc(c.content)}</div>
       <div class="comment-meta">just now</div>
-    </div>
-  `;
-  section.insertBefore(commentEl, inputRow);
+    </div>`;
+  section.insertBefore(el, row);
+};
+
+window.bookmarkPost = async function(postId, btn) {
+  const isBm = btn.classList.contains('bookmarked');
+  const svgBm     = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+  const svgBmOut  = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+  if (isBm) {
+    btn.classList.remove('bookmarked');
+    btn.innerHTML = svgBmOut;
+    await supabase.from('bookmarks').delete().match({user_id:user.id,post_id:postId});
+    toast('Removed from bookmarks','info');
+  } else {
+    btn.classList.add('bookmarked');
+    btn.innerHTML = svgBm;
+    const {error} = await supabase.from('bookmarks').insert({user_id:user.id,post_id:postId});
+    if (error && error.code==='23505') { toast('Already saved','info'); return; }
+    toast('Saved to bookmarks','success');
+  }
+};
+
+window.sharePost = function(postId) {
+  navigator.clipboard.writeText(location.origin+'/pages/feed.html?post='+postId);
+  toast('Link copied!','success');
 };
 
 window.togglePostMenu = function(btn, postId) {
-  const { openDropdown } = window._appUtils || {};
-  const items = [
-    { icon: '✏️', label: 'Edit post', action: () => editPost(postId) },
-    { icon: '🗑️', label: 'Delete post', danger: true, action: () => deletePost(postId) },
-  ];
+  document.querySelectorAll('.post-menu-dropdown').forEach(d=>d.remove());
   const menu = document.createElement('div');
-  menu.className = 'dropdown-menu';
-  items.forEach(item => {
-    const el = document.createElement('button');
-    el.className = `dropdown-item${item.danger ? ' danger' : ''}`;
-    el.innerHTML = `${item.icon} ${item.label}`;
-    el.onclick = () => { item.action(); menu.remove(); };
-    menu.appendChild(el);
-  });
-  btn.parentElement.style.position = 'relative';
+  menu.className = 'post-menu-dropdown';
+  menu.innerHTML = `
+    <button class="dropdown-item" onclick="editPost('${postId}');this.closest('.post-menu-dropdown').remove()">Edit post</button>
+    <button class="dropdown-item danger" onclick="deletePost('${postId}');this.closest('.post-menu-dropdown').remove()">Delete post</button>`;
+  btn.parentElement.style.position='relative';
   btn.parentElement.appendChild(menu);
-  setTimeout(() => document.addEventListener('click', function close(e) {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
-  }, { once: false }), 10);
+  setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),10);
 };
 
 window.deletePost = async function(postId) {
   if (!confirm('Delete this post?')) return;
-  await supabase.from('posts').delete().eq('id', postId);
-  document.querySelector(`[data-post-id="${postId}"]`)?.remove();
-  toast('Post deleted', 'success');
+  await supabase.from('posts').delete().eq('id',postId);
+  document.querySelector('[data-post-id="'+postId+'"]')?.remove();
+  toast('Post deleted','success');
 };
 
 window.editPost = function(postId) {
-  const card = document.querySelector(`[data-post-id="${postId}"]`);
+  const card = document.querySelector('[data-post-id="'+postId+'"]');
   const contentEl = card.querySelector('.post-content');
-  const oldContent = contentEl.textContent;
-  const textarea = document.createElement('textarea');
-  textarea.className = 'compose-input';
-  textarea.value = oldContent;
-  textarea.style.margin = '0 16px 12px';
-  contentEl.replaceWith(textarea);
-  textarea.focus();
-
-  const footer = document.createElement('div');
-  footer.style.cssText = 'padding:0 16px 12px;display:flex;gap:8px;justify-content:flex-end';
-  footer.innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="cancelEdit('${postId}')">Cancel</button>
-    <button class="btn btn-primary btn-sm" onclick="saveEdit('${postId}')">Save</button>
-  `;
-  textarea.insertAdjacentElement('afterend', footer);
-  card._editFooter = footer;
-  card._editTextarea = textarea;
-  card._oldContent = oldContent;
+  if (!contentEl) return;
+  const old = contentEl.textContent;
+  const ta = document.createElement('textarea');
+  ta.className = 'compose-input'; ta.value = old;
+  ta.style.cssText = 'margin:0 14px 8px;width:calc(100% - 28px)';
+  contentEl.replaceWith(ta); ta.focus();
+  const foot = document.createElement('div');
+  foot.style.cssText = 'padding:0 14px 10px;display:flex;gap:8px;justify-content:flex-end';
+  foot.innerHTML = `<button class="btn btn-secondary btn-sm" onclick="cancelEdit('${postId}')">Cancel</button><button class="btn btn-primary btn-sm" onclick="saveEdit('${postId}')">Save</button>`;
+  ta.insertAdjacentElement('afterend', foot);
+  card._ta = ta; card._foot = foot; card._old = old;
 };
-
 window.cancelEdit = function(postId) {
-  const card = document.querySelector(`[data-post-id="${postId}"]`);
-  const newContent = document.createElement('div');
-  newContent.className = 'post-content';
-  newContent.textContent = card._oldContent;
-  card._editTextarea.replaceWith(newContent);
-  card._editFooter.remove();
+  const card = document.querySelector('[data-post-id="'+postId+'"]');
+  const div = document.createElement('div'); div.className='post-content'; div.textContent=card._old;
+  card._ta.replaceWith(div); card._foot.remove();
 };
-
 window.saveEdit = async function(postId) {
-  const card = document.querySelector(`[data-post-id="${postId}"]`);
-  const content = card._editTextarea.value.trim();
-  if (!content) return;
-  await supabase.from('posts').update({ content }).eq('id', postId);
-  const newContent = document.createElement('div');
-  newContent.className = 'post-content';
-  newContent.textContent = content;
-  card._editTextarea.replaceWith(newContent);
-  card._editFooter.remove();
-  toast('Post updated', 'success');
+  const card = document.querySelector('[data-post-id="'+postId+'"]');
+  const txt = card._ta.value.trim(); if (!txt) return;
+  await supabase.from('posts').update({content:txt}).eq('id',postId);
+  const div = document.createElement('div'); div.className='post-content'; div.textContent=txt;
+  card._ta.replaceWith(div); card._foot.remove();
+  toast('Post updated','success');
 };
 
-window.sharePost = function(postId) {
-  navigator.clipboard.writeText(`${window.location.origin}../pages/post.html?id=${postId}`);
-  toast('Link copied!', 'success');
-};
-
-window.openImageViewer = function(url) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
-  overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px">`;
-  overlay.onclick = () => overlay.remove();
-  document.body.appendChild(overlay);
-};
-
-// ── Stories ──
-async function loadStories() {
-  const { data: friends } = await supabase
-    .from('friendships')
-    .select('requester_id, addressee_id')
-    .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
-    .eq('status', 'accepted');
-
-  const friendIds = (friends || []).map(f =>
-    f.requester_id === currentUser.id ? f.addressee_id : f.requester_id
-  );
-
-  if (!friendIds.length) return;
-
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, avatar_url')
-    .in('id', friendIds)
-    .limit(8);
-
-  const bar = document.getElementById('stories-bar');
-  (profiles || []).forEach(p => {
-    const div = document.createElement('div');
-    div.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-width:64px';
-    div.innerHTML = `
-      <div style="width:60px;height:60px;border-radius:50%;padding:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));cursor:pointer"
-           onclick="window.location.href='../pages/profile.html?id=${p.id}'">
-        <img style="width:100%;height:100%;border-radius:50%;border:2px solid var(--surface);object-fit:cover" 
-             src="${avatarUrl(p.avatar_url)}" alt="">
-      </div>
-      <span style="font-size:11px;color:var(--text2);max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.full_name}</span>
-    `;
-    bar.appendChild(div);
-  });
-}
-
-// ── Realtime ──
+// ── realtime ──────────────────────────────────────────────────
 function setupRealtime() {
-  supabase.channel('feed')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
-      if (payload.new.author_id === currentUser.id) return; // We already added it
-      const { data: post } = await supabase
-        .from('posts')
-        .select('*, author:profiles!author_id(id, full_name, username, avatar_url)')
-        .eq('id', payload.new.id)
-        .single();
-      if (post) {
-        post.user_liked = false;
-        const container = document.getElementById('feed-container');
-        const empty = container.querySelector('.empty-state');
+  supabase.channel('feed-realtime')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'}, async payload => {
+      if (payload.new.author_id === user.id) return;
+      const {data:p} = await supabase.from('posts')
+        .select('*, author:profiles!author_id(id,full_name,username,avatar_url)')
+        .eq('id',payload.new.id).single();
+      if (p) {
+        p.user_liked=false; p.user_bookmarked=false;
+        const feed = document.getElementById('feed');
+        const empty = feed.querySelector('.empty-state');
         if (empty) empty.remove();
-        container.insertAdjacentHTML('afterbegin', renderPost(post, currentUser.id));
+        feed.insertAdjacentHTML('afterbegin', renderPost(p, user.id));
       }
-    })
-    .subscribe();
+    }).subscribe();
 }
 
-
-window.bookmarkPost = async function(postId) {
-  const { error } = await supabase.from('bookmarks').insert({ user_id: currentUser.id, post_id: postId });
-  if (error && error.code === '23505') { toast('Already saved', 'info'); return; }
-  if (error) { toast('Error saving post', 'error'); return; }
-  toast('Post saved to bookmarks!', 'success');
-};
-
-// ── Right sidebar widgets ─────────────────────────────────────
-async function loadRightSidebar() {
-  // Online friends
-  const { data: friendships } = await supabase.from('friendships')
+// ── stories ───────────────────────────────────────────────────
+async function loadStories() {
+  const {data:fs} = await supabase.from('friendships')
     .select('requester_id,addressee_id')
-    .or('requester_id.eq.'+currentUser.id+',addressee_id.eq.'+currentUser.id)
+    .or('requester_id.eq.'+user.id+',addressee_id.eq.'+user.id)
     .eq('status','accepted');
-  const friendIds = (friendships||[]).map(f => f.requester_id===currentUser.id ? f.addressee_id : f.requester_id);
-
-  if (friendIds.length) {
-    const { data: onlineFriends } = await supabase.from('profiles')
-      .select('id,full_name,avatar_url,status')
-      .in('id', friendIds.slice(0,20))
-      .order('last_seen',{ascending:false})
-      .limit(8);
-    const ol = document.getElementById('online-list');
-    document.getElementById('online-count').textContent = (onlineFriends||[]).length + ' friends';
-    if ((onlineFriends||[]).length) {
-    ol.innerHTML = onlineFriends.map(u => `
-  <div class="widget-user" onclick="window.location.href='../pages/profile.html?id=${u.id}'">
-    <div style="position:relative;flex-shrink:0">
-      <img src="${avatarUrl(u.avatar_url)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">
-      <span style="position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--surface)"></span>
-    </div>
-    <div><div class="widget-user-name">${esc(u.full_name)}</div></div>
-  </div>
-`).join('');
-    } else {
-      ol.innerHTML = '<p style="font-size:12px;color:var(--text3)">No friends online</p>';
-    }
-  } else {
-    document.getElementById('online-list').innerHTML = '<p style="font-size:12px;color:var(--text3)">Add friends to see them here</p>';
-  }
-
-  // Suggested communities
-  const { data: groups } = await supabase.from('groups').select('id,name,members_count,avatar_url').order('members_count',{ascending:false}).limit(4);
-  const sc = document.getElementById('suggested-comms');
-  if ((groups||[]).length) {
-   ol.innerHTML = onlineFriends.map(u => `
-  <div class="widget-user" onclick="window.location.href='../pages/profile.html?id=${u.id}'">
-    <div style="position:relative;flex-shrink:0">
-      <img src="${avatarUrl(u.avatar_url)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">
-      <span style="position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--surface)"></span>
-    </div>
-    <div><div class="widget-user-name">${esc(u.full_name)}</div></div>
-  </div>
-`).join('');
-  } else {
-    sc.innerHTML = '<p style="font-size:12px;color:var(--text3)">No communities yet</p>';
-  }
-
-  // Upcoming events
-  const { data: events } = await supabase.from('events').select('id,title,starts_at,location').gte('starts_at',new Date().toISOString()).order('starts_at',{ascending:true}).limit(3);
-  const ue = document.getElementById('upcoming-events');
-  if ((events||[]).length) {
-   ue.innerHTML = events.map(ev => {
-  const d = new Date(ev.starts_at);
-  return `
-    <div class="widget-user" onclick="window.location.href='../pages/events.html'">
-      <div style="width:32px;height:32px;border-radius:8px;background:rgba(91,127,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
-        <span style="font-size:14px;font-weight:800;font-family:Nunito,sans-serif;color:var(--accent);line-height:1">${d.getDate()}</span>
-        <span style="font-size:9px;color:var(--text3)">${d.toLocaleDateString('en',{month:'short'}).toUpperCase()}</span>
-      </div>
-      <div>
-        <div class="widget-user-name">${esc(ev.title)}</div>
-        ${ev.location ? `<div class="widget-user-sub">&#128205; ${esc(ev.location)}</div>` : ''}
-      </div>
-    </div>
-  `;
-}).join('');
-  } else {
-    ue.innerHTML = '<p style="font-size:12px;color:var(--text3)">No upcoming events</p>';
-  }
-
-  // Stories: load friends' avatars
-// ── Stories: load friends' avatars ──
-const strip = document.getElementById('stories-strip');
-if (strip && friendIds.length) {
-  const { data: storyFriends } = await supabase
-    .from('profiles')
-    .select('id,full_name,avatar_url')
-    .in('id', friendIds.slice(0, 8));
-
-  // Clear the strip first
-  strip.innerHTML = '';
-
-  // Add the "Add Story" button
-  const addStoryDiv = document.createElement('div');
-  addStoryDiv.className = 'story-item story-add';
-  addStoryDiv.innerHTML = `
-    <div class="story-ring"><div class="story-add-icon">+</div></div>
-    <div class="story-name">Add Story</div>
-  `;
-  addStoryDiv.addEventListener('click', () => toast('Stories coming soon!', 'info'));
-  strip.appendChild(addStoryDiv);
-
-  // Add stories from friends
-  (storyFriends || []).forEach(u => {
-    const storyDiv = document.createElement('div');
-    storyDiv.className = 'story-item';
-
-    const storyRing = document.createElement('div');
-    storyRing.className = 'story-ring';
-
-    const img = document.createElement('img');
-    img.className = 'story-avatar';
-    img.src = avatarUrl(u.avatar_url);
-    img.alt = '';
-    img.onerror = () => { img.src = '../assets/default-avatar.svg'; };
-    storyRing.appendChild(img);
-
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'story-name';
-    nameDiv.textContent = esc(u.full_name.split(' ')[0]);
-
-    storyDiv.appendChild(storyRing);
-    storyDiv.appendChild(nameDiv);
-
-    storyDiv.addEventListener('click', () => {
-      window.location.href = `../pages/profile.html?id=${encodeURIComponent(u.id)}`;
-    });
-
-   strip.appendChild(storyDiv);
+  const ids = (fs||[]).map(f=>f.requester_id===user.id?f.addressee_id:f.requester_id);
+  if (!ids.length) return;
+  const {data:pp} = await supabase.from('profiles').select('id,full_name,avatar_url').in('id',ids).limit(10);
+  const strip = document.getElementById('stories-strip');
+  (pp||[]).forEach(p=>{
+    const div = document.createElement('div');
+    div.className='story-item';
+    div.innerHTML=`<div class="story-ring"><img class="story-avatar" src="${avatarUrl(p.avatar_url)}" alt="" onerror="this.src='../assets/default-avatar.svg'"></div><div class="story-name">${esc(p.full_name.split(' ')[0])}</div>`;
+    div.onclick=()=>location.href='../pages/profile.html?id='+p.id;
+    strip.appendChild(div);
   });
 }
+
+// ── right sidebar widgets ─────────────────────────────────────
+async function loadWidgets() {
+  const {data:fs} = await supabase.from('friendships')
+    .select('requester_id,addressee_id')
+    .or('requester_id.eq.'+user.id+',addressee_id.eq.'+user.id)
+    .eq('status','accepted');
+  const fids = (fs||[]).map(f=>f.requester_id===user.id?f.addressee_id:f.requester_id);
+
+  // Friends widget
+  const wf = document.getElementById('w-friends');
+  if (fids.length) {
+    const {data:pp} = await supabase.from('profiles').select('id,full_name,avatar_url').in('id',fids).limit(6);
+    wf.innerHTML = (pp||[]).map(p=>`
+      <div class="widget-row" onclick="location.href='../pages/profile.html?id=${p.id}'">
+        <div style="position:relative;flex-shrink:0">
+          <img src="${avatarUrl(p.avatar_url)}" style="width:30px;height:30px;border-radius:50%;object-fit:cover" onerror="this.src='../assets/default-avatar.svg'">
+          <span class="online-dot" style="position:absolute;bottom:0;right:0;border:2px solid var(--surface)"></span>
+        </div>
+        <span class="widget-row-name">${esc(p.full_name)}</span>
+      </div>`).join('') || '<p style="font-size:12px;color:var(--text3)">No friends yet</p>';
+  } else {
+    wf.innerHTML = '<p style="font-size:12px;color:var(--text3)"><a href="../pages/search.html">Find friends</a></p>';
+  }
+
+  // Communities widget
+  const wg = document.getElementById('w-groups');
+  const {data:groups} = await supabase.from('groups').select('id,name,members_count,avatar_url').order('members_count',{ascending:false}).limit(5);
+  wg.innerHTML = (groups||[]).length
+    ? (groups||[]).map(g=>`
+      <div class="widget-row" onclick="location.href='../pages/group.html?id=${g.id}'">
+        <img src="${g.avatar_url||'../assets/default-avatar.svg'}" style="width:30px;height:30px;border-radius:4px;object-fit:cover;flex-shrink:0" onerror="this.src='../assets/default-avatar.svg'">
+        <div style="min-width:0">
+          <div class="widget-row-name">${esc(g.name)}</div>
+          <div class="widget-row-sub">${g.members_count||0} members</div>
+        </div>
+      </div>`).join('')
+    : '<p style="font-size:12px;color:var(--text3)"><a href="../pages/groups.html">Browse communities</a></p>';
+
+  // Events widget
+  const we = document.getElementById('w-events');
+  const {data:evs} = await supabase.from('events').select('id,title,starts_at,location')
+    .gte('starts_at',new Date().toISOString()).order('starts_at',{ascending:true}).limit(3);
+  we.innerHTML = (evs||[]).length
+    ? (evs||[]).map(ev=>{
+      const d=new Date(ev.starts_at);
+      return `<div class="widget-row" onclick="location.href='../pages/events.html'">
+        <div style="width:32px;height:32px;border-radius:4px;background:var(--accent-l);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+          <span style="font-size:15px;font-weight:700;color:var(--accent);line-height:1">${d.getDate()}</span>
+          <span style="font-size:9px;color:var(--text3)">${d.toLocaleDateString('en',{month:'short'}).toUpperCase()}</span>
+        </div>
+        <div style="min-width:0">
+          <div class="widget-row-name">${esc(ev.title)}</div>
+          ${ev.location?`<div class="widget-row-sub">${esc(ev.location)}</div>`:''}
+        </div>
+      </div>`;}).join('')
+    : '<p style="font-size:12px;color:var(--text3)"><a href="../pages/events.html">Browse events</a></p>';
 }
-init().then(() => {
-  // If loadStories() logic is already inside loadRightSidebar, 
-  // you might not need to call it separately.
-  loadRightSidebar();
-});
+
+window.toggleSidebar = ()=>document.getElementById('sidebar').classList.toggle('open');
+init();
 </script>
 </body>
 </html>
